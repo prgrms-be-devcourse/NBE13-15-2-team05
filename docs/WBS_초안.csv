@@ -1,0 +1,65 @@
+﻿작업,프로젝트,담당자,시작일,마감일,우선순위,태그,진행 상태,선행 작업
+프로젝트 기술서 작성,주제 선정/기획,유승민,2026-11-23,2026-11-23,높음,문서,완료,
+ERD·엔티티 8개 확정,주제 선정/기획,유승민,2026-11-23,2026-11-23,높음,문서,완료,
+API 설계 29개,주제 선정/기획,유승민,2026-11-23,2026-11-24,높음,문서,완료,
+모듈 계약서 (포인트·거래·이벤트 인터페이스),주제 선정/기획,유승민,2026-11-23,2026-11-24,높음,문서,완료,
+"프로젝트 세팅 (Spring Boot 4, 패키지, CI, Docker MySQL)",개발 문서 및 초기세팅,유승민,2026-11-24,2026-11-24,높음,공통,완료,
+담당자별 작업 가이드·컨트롤러별 할당,개발 문서 및 초기세팅,유승민,2026-11-24,2026-11-24,높음,문서,완료,
+노션 기술서 최신화,개발 문서 및 초기세팅,유승민,2026-11-24,2026-11-24,중간,문서,진행 중,
+협업 규칙 확정 (브랜치·커밋·PR),개발 문서 및 초기세팅,전원,2026-11-24,2026-11-24,높음,문서,시작 전,
+GitHub 이슈 등록 (컨트롤러·작업 단위),개발 문서 및 초기세팅,전원,2026-11-24,2026-11-24,중간,문서,시작 전,협업 규칙 확정 (브랜치·커밋·PR)
+[C1] POST /api/auth/signup 회원가입,개발,우승명,2026-11-24,2026-11-25,높음,회원,시작 전,
+[C1] POST /api/auth/login 로그인 + JWT 필터,개발,우승명,2026-11-24,2026-11-25,높음,회원,시작 전,
+테스트 데이터: 유저 3명·운영자·카테고리,개발,우승명,2026-11-25,2026-11-25,높음,공통,시작 전,[C1] POST /api/auth/signup 회원가입
+[C2] GET /api/users/me 내 정보 조회,개발,우승명,2026-11-26,2026-11-27,중간,회원,시작 전,[C1] POST /api/auth/login 로그인 + JWT 필터
+[C2] PATCH /api/users/me 내 정보 수정 (R-66),개발,우승명,2026-11-26,2026-11-27,중간,회원,시작 전,[C1] POST /api/auth/login 로그인 + JWT 필터
+알림 이벤트 리스너 (이벤트 7종),개발,우승명,2026-11-30,2026-12-01,중간,알림,시작 전,
+[C3] GET /api/notifications 알림 목록,개발,우승명,2026-12-01,2026-12-01,중간,알림,시작 전,알림 이벤트 리스너 (이벤트 7종)
+[C3] PATCH /api/notifications/{id}/read 읽음 처리,개발,우승명,2026-12-01,2026-12-01,낮음,알림,시작 전,알림 이벤트 리스너 (이벤트 7종)
+시연용 마감 임박 경매 데이터,개발,우승명,2026-12-02,2026-12-03,중간,공통,시작 전,[C7] POST /api/auctions 경매 등록
+Swagger 정리·공통 예외 점검,개발,우승명,2026-12-02,2026-12-03,낮음,공통,시작 전,
+"User 잔액 변경 메서드 (charge, lock, unlock 등)",개발,김상중,2026-11-23,2026-11-24,높음,포인트,시작 전,
+[C5] GET /api/categories + CategoryService.getById,개발,김상중,2026-11-24,2026-11-25,높음,카테고리,시작 전,
+[C6] POST /api/admin/categories 카테고리 등록,개발,김상중,2026-11-24,2026-11-25,높음,카테고리,시작 전,
+[C6] PATCH /api/admin/categories/{id} 카테고리 수정,개발,김상중,2026-11-25,2026-11-25,중간,카테고리,시작 전,[C6] POST /api/admin/categories 카테고리 등록
+[C6] DELETE /api/admin/categories/{id} 카테고리 삭제 (R-64),개발,김상중,2026-11-25,2026-11-25,중간,카테고리,시작 전,[C6] POST /api/admin/categories 카테고리 등록
+PointService.charge · lockForBid,개발,김상중,2026-11-25,2026-11-26,높음,포인트,시작 전,"User 잔액 변경 메서드 (charge, lock, unlock 등)"
+[C4] POST /api/users/me/charge 포인트 충전,개발,김상중,2026-11-26,2026-11-26,높음,포인트,시작 전,PointService.charge · lockForBid
+"FeeCalculatorImpl (BigDecimal, 버림)",개발,김상중,2026-11-27,2026-11-27,높음,포인트,시작 전,
+PointService.confirmPurchase · refund · unlockBid,개발,김상중,2026-11-27,2026-11-30,높음,포인트,시작 전,PointService.charge · lockForBid
+[C4] GET /api/users/me/balance-histories 변동 내역,개발,김상중,2026-11-30,2026-11-30,중간,포인트,시작 전,PointService.charge · lockForBid
+포인트 정합성 테스트,개발,김상중,2026-12-02,2026-12-03,중간,포인트,시작 전,PointService.confirmPurchase · refund · unlockBid
+Auction 생성·close·cancel·isEditable + 단위 테스트,개발,이상훈,2026-11-23,2026-11-25,높음,경매,시작 전,
+[C7] POST /api/auctions 경매 등록,개발,이상훈,2026-11-25,2026-11-26,높음,경매,시작 전,"Auction 생성·close·cancel·isEditable + 단위 테스트, [C5] GET /api/categories + CategoryService.getById"
+[C7] GET /api/auctions 경매 목록 (필터·정렬·페이지),개발,이상훈,2026-11-26,2026-11-27,중간,경매,시작 전,[C7] POST /api/auctions 경매 등록
+[C7] GET /api/auctions/{id} 경매 상세,개발,이상훈,2026-11-26,2026-11-27,중간,경매,시작 전,[C7] POST /api/auctions 경매 등록
+[C7] GET /api/users/me/auctions 내 판매 경매,개발,이상훈,2026-11-27,2026-11-27,낮음,경매,시작 전,[C7] POST /api/auctions 경매 등록
+[C7] PATCH /api/auctions/{id} 경매 수정 (R-06),개발,이상훈,2026-11-27,2026-11-27,중간,경매,시작 전,[C7] POST /api/auctions 경매 등록
+[C7] POST /api/auctions/{id}/cancel 경매 취소 (R-06),개발,이상훈,2026-11-27,2026-11-27,중간,경매,시작 전,[C7] POST /api/auctions 경매 등록
+"경매 종료 스케줄러 (1분, 건별 트랜잭션)",개발,이상훈,2026-11-30,2026-12-01,높음,경매,시작 전,TradeService.createTrade (수수료·배송지 스냅샷)
+[C8] POST /api/admin/auctions/{id}/cancel 강제 취소 (R-61),개발,이상훈,2026-12-02,2026-12-02,중간,경매,시작 전,PointService.confirmPurchase · refund · unlockBid
+BidUnitPolicyImpl + Auction 입찰 메서드 + 단위 테스트,개발,유승민,2026-11-23,2026-11-25,높음,입찰,시작 전,
+[C9] POST /api/auctions/{id}/bids 입찰,개발,유승민,2026-11-25,2026-11-27,높음,입찰,시작 전,"BidUnitPolicyImpl + Auction 입찰 메서드 + 단위 테스트, [C7] POST /api/auctions 경매 등록, PointService.charge · lockForBid"
+[C9] GET /api/auctions/{id}/bids 입찰 내역 (R-18),개발,유승민,2026-11-27,2026-11-27,중간,입찰,시작 전,[C9] POST /api/auctions/{id}/bids 입찰
+[C9] GET /api/users/me/bids 내 입찰 목록,개발,유승민,2026-11-27,2026-11-27,낮음,입찰,시작 전,[C9] POST /api/auctions/{id}/bids 입찰
+[C9] POST /api/auctions/{id}/buy-now 즉시구매 (R-43~45),개발,유승민,2026-11-30,2026-11-30,높음,입찰,시작 전,"[C9] POST /api/auctions/{id}/bids 입찰, TradeService.createTrade (수수료·배송지 스냅샷)"
+OutbidEvent 발행 · BID_CONFLICT(409) 처리,개발,유승민,2026-11-30,2026-12-01,중간,입찰,시작 전,[C9] POST /api/auctions/{id}/bids 입찰
+[C10] GET /api/admin/auctions/{id}/bids 실제 입찰자 조회,개발,유승민,2026-12-02,2026-12-02,낮음,입찰,시작 전,[C9] POST /api/auctions/{id}/bids 입찰
+동시 입찰 100건 테스트 (Testcontainers),개발,유승민,2026-12-02,2026-12-03,높음,입찰,시작 전,OutbidEvent 발행 · BID_CONFLICT(409) 처리
+[C11] GET /api/trades?role= 내 거래 목록,개발,한다솔,2026-11-23,2026-11-27,중간,거래,시작 전,
+[C11] GET /api/trades/{id} 거래 상세 (R-50),개발,한다솔,2026-11-23,2026-11-27,중간,거래,시작 전,
+TradeService.createTrade (수수료·배송지 스냅샷),개발,한다솔,2026-11-27,2026-11-30,높음,거래,시작 전,"FeeCalculatorImpl (BigDecimal, 버림)"
+[C11] PATCH /api/trades/{id}/tracking 송장 입력,개발,한다솔,2026-11-30,2026-12-01,중간,거래,시작 전,TradeService.createTrade (수수료·배송지 스냅샷)
+[C11] POST /api/trades/{id}/confirm 구매확정,개발,한다솔,2026-11-30,2026-12-01,높음,거래,시작 전,"TradeService.createTrade (수수료·배송지 스냅샷), PointService.confirmPurchase · refund · unlockBid"
+스케줄러 3개 (송장 기한·자동 확정·확정 임박),개발,한다솔,2026-12-01,2026-12-02,중간,거래,시작 전,[C11] PATCH /api/trades/{id}/tracking 송장 입력
+[C12] POST /api/admin/trades/{id}/cancel 거래 취소·환불,개발,한다솔,2026-12-02,2026-12-02,중간,거래,시작 전,PointService.confirmPurchase · refund · unlockBid
+중간 점검: 가입 → 충전 → 등록 → 입찰 흐름 확인,중간 점검,전원,2026-11-27,2026-11-27,높음,점검,시작 전,"[C1] POST /api/auth/login 로그인 + JWT 필터, [C4] POST /api/users/me/charge 포인트 충전, [C7] POST /api/auctions 경매 등록, [C9] POST /api/auctions/{id}/bids 입찰"
+통합 시나리오 테스트·버그 수정,중간 점검,전원,2026-12-02,2026-12-03,높음,점검,시작 전,"경매 종료 스케줄러 (1분, 건별 트랜잭션), [C9] POST /api/auctions/{id}/buy-now 즉시구매 (R-43~45), [C11] POST /api/trades/{id}/confirm 구매확정"
+배포,발표 준비 및 회고,유승민,2026-12-04,2026-12-04,중간,발표,시작 전,통합 시나리오 테스트·버그 수정
+README·문서 정리,발표 준비 및 회고,전원,2026-12-04,2026-12-04,중간,발표,시작 전,통합 시나리오 테스트·버그 수정
+PPT 작업,발표 준비 및 회고,전원,2026-12-04,2026-12-04,중간,발표,시작 전,통합 시나리오 테스트·버그 수정
+시연 리허설,발표 준비 및 회고,전원,2026-12-04,2026-12-04,중간,발표,시작 전,시연용 마감 임박 경매 데이터
+최종 발표·회고,발표 준비 및 회고,전원,2026-12-07,2026-12-07,높음,발표,시작 전,PPT 작업
+WTL 1차,미팅/멘토링,전원,2026-11-27,2026-11-27,중간,미팅,시작 전,
+WTL 2차,미팅/멘토링,전원,2026-12-04,2026-12-04,중간,미팅,시작 전,
+WTL 3차,미팅/멘토링,전원,2026-12-07,2026-12-07,중간,미팅,시작 전,
