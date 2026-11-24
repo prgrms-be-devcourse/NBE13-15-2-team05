@@ -11,7 +11,7 @@ PR 제목: [도메인] 작업 내용   예) [bid] 입찰 API 구현, [point] loc
 
 <!-- 예) POST /api/auctions/{id}/bids, R-10 ~ R-19 -->
 - API:
-- 규칙:
+- 규칙(선택, 알면 적기):
 
 ## 변경 사항
 
