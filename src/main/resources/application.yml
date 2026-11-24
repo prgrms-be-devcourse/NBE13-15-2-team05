@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: auction
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update        # TODO: 배포 시 validate로 바꾸고 스키마는 별도 관리
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: Asia/Seoul
+  jackson:
+    time-zone: Asia/Seoul
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+# TODO(회원·공통): JWT 설정 키(secret, 만료 시간)는 구현할 때 추가
+
+# ---- 정책 설정값 (docs/프로젝트_기술서.md 5.3) ----
+# 수수료율·입찰 단위는 예시 값입니다. 팀에서 확정 후 수정하세요.
+auction:
+  fee:                        # 수수료: 판매자 부담, 구간별 정률
+    tiers:
+      - max-price: 99999
+        rate: 0.05
+      - max-price:            # 비워두면 상한 없음 (마지막 구간은 반드시 비움)
+        rate: 0.03
+  bid-unit:                   # 현재가 구간별 최소 입찰 단위
+    tiers:
+      - max-price: 9999
+        unit: 500
+      - max-price: 99999
+        unit: 1000
+      - max-price: 999999
+        unit: 5000
+      - max-price:
+        unit: 10000
+  extension:                  # 마감 연장 (등록 시점 값을 경매에 복사)
+    enabled: true
+    trigger-minutes: 30
+    extend-minutes: 60
+  trade:
+    ship-deadline-days: 3     # 송장 입력 기한
+    auto-confirm-days: 7      # 송장 입력 후 자동 구매확정
+  point:
+    max-charge-amount: 1000000
