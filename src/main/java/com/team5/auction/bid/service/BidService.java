@@ -91,6 +91,9 @@ public class BidService {
 			tradeId = trade.getId();
 		}
 
+		// 7. 커밋은 메서드가 끝날 때 @Transactional이 한다.
+		//    version 충돌은 커밋 시점에 나므로 여기서 잡지 않고 BidExceptionHandler가 409(BID_CONFLICT)로 바꾼다 (R-16)
+
 		// TODO(입찰) 8. 이전 최고 입찰자가 있으면 OutbidEvent 발행
 
 		return BidResultResponse.of(bid, auction, extended, tradeId);
