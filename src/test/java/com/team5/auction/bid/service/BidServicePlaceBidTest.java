@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.team5.auction.auction.domain.Auction;
@@ -22,6 +23,7 @@ import com.team5.auction.auction.exception.AuctionErrorCode;
 import com.team5.auction.auction.repository.AuctionRepository;
 import com.team5.auction.bid.domain.Bid;
 import com.team5.auction.bid.dto.BidResultResponse;
+import com.team5.auction.bid.event.OutbidEvent;
 import com.team5.auction.bid.exception.BidErrorCode;
 import com.team5.auction.bid.repository.BidRepository;
 import com.team5.auction.common.config.TimeConfig;
@@ -53,6 +55,8 @@ class BidServicePlaceBidTest {
 	private PointService pointService;
 	@Mock
 	private TradeService tradeService;
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
 
 	private BidService bidService;
 
@@ -65,7 +69,7 @@ class BidServicePlaceBidTest {
 		Clock clock = Clock.fixed(NOW.atZone(TimeConfig.ZONE).toInstant(), TimeConfig.ZONE);
 		BidUnitPolicy unitPolicy = currentPrice -> 1_000;
 		bidService = new BidService(bidRepository, auctionRepository, userRepository, unitPolicy,
-			pointService, tradeService, clock);
+			pointService, tradeService, clock, eventPublisher);
 	}
 
 	@Test
@@ -80,6 +84,7 @@ class BidServicePlaceBidTest {
 		assertThat(auction.getCurrentPrice()).isEqualTo(10_000);
 		assertThat(auction.getHighestBidder()).isSameAs(bidder);
 		assertThat(result).isEqualTo(new BidResultResponse(500L, 10_000, 10_000, END_AT, false, false, null));
+		then(eventPublisher).shouldHaveNoInteractions(); // 밀려난 사람이 없으니 OUTBID 알림도 없다
 	}
 
 	@Test
@@ -92,6 +97,7 @@ class BidServicePlaceBidTest {
 
 		then(pointService).should().lockForBid(AUCTION_ID, bidder.getId(), 15_000, prevBidder.getId(), 12_000);
 		then(bidRepository).should().save(argThat(bid -> bid.getAmount() == 15_000 && bid.getBidAt().equals(NOW)));
+		then(eventPublisher).should().publishEvent(new OutbidEvent(AUCTION_ID, "빈티지 카메라", prevBidder.getId(), 15_000));
 	}
 
 	@Test
@@ -123,6 +129,8 @@ class BidServicePlaceBidTest {
 		assertThat(result.amount()).isEqualTo(50_000);
 		assertThat(result.boughtNow()).isTrue();
 		assertThat(result.tradeId()).isEqualTo(900L);
+		// 즉시구매로 밀려나도 OUTBID 알림, 금액은 실제 처리된 즉시구매가
+		then(eventPublisher).should().publishEvent(new OutbidEvent(AUCTION_ID, "빈티지 카메라", prevBidder.getId(), 50_000));
 	}
 
 	@Test
@@ -146,6 +154,7 @@ class BidServicePlaceBidTest {
 		assertError(() -> bidService.placeBid(AUCTION_ID, bidder.getId(), 12_999), BidErrorCode.BID_TOO_LOW);
 		then(pointService).shouldHaveNoInteractions();
 		then(bidRepository).shouldHaveNoInteractions();
+		then(eventPublisher).shouldHaveNoInteractions();
 	}
 
 	@Test

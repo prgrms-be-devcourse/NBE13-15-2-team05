@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ import com.team5.auction.bid.dto.BidHistoryResponse;
 import com.team5.auction.bid.dto.BidResultResponse;
 import com.team5.auction.bid.dto.MyBidResponse;
 import com.team5.auction.bid.domain.Bid;
+import com.team5.auction.bid.event.OutbidEvent;
 import com.team5.auction.bid.exception.BidErrorCode;
 import com.team5.auction.bid.repository.BidRepository;
 import com.team5.auction.common.exception.BusinessException;
@@ -44,6 +46,7 @@ public class BidService {
 	private final PointService pointService;
 	private final TradeService tradeService;
 	private final Clock clock;
+	private final ApplicationEventPublisher eventPublisher;
 
 	/**
 	 * 입찰 (기술서 9.1). 즉시구매가 이상이면 즉시구매가로 낙찰 처리한다 (R-43, R-40).
@@ -94,7 +97,10 @@ public class BidService {
 		// 7. 커밋은 메서드가 끝날 때 @Transactional이 한다.
 		//    version 충돌은 커밋 시점에 나므로 여기서 잡지 않고 BidExceptionHandler가 409(BID_CONFLICT)로 바꾼다 (R-16)
 
-		// TODO(입찰) 8. 이전 최고 입찰자가 있으면 OutbidEvent 발행
+		// 8. 이전 최고 입찰자에게 OUTBID 알림 (즉시구매 포함).
+		//    트랜잭션 안에서 발행하고, 알림 쪽이 커밋 후(AFTER_COMMIT)에 받으므로 롤백되면 알림도 가지 않는다
+		if (prevBidder != null)
+			eventPublisher.publishEvent(new OutbidEvent(auctionId, auction.getTitle(), prevBidder.getId(), price));
 
 		return BidResultResponse.of(bid, auction, extended, tradeId);
 	}
