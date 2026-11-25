@@ -2,10 +2,8 @@ package com.team5.auction.trade.service;
 
 import com.team5.auction.common.config.AuctionPolicyProperties;
 import com.team5.auction.common.entity.Address;
-import com.team5.auction.common.exception.BusinessException;
 import com.team5.auction.point.service.Fee;
 import com.team5.auction.point.service.FeeCalculator;
-import com.team5.auction.point.service.PointService;
 import com.team5.auction.trade.domain.TradeRole;
 import com.team5.auction.trade.domain.TradeStatus;
 import com.team5.auction.trade.dto.TradeDetailResponse;
@@ -27,8 +25,6 @@ import com.team5.auction.user.domain.User;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
-
-import static com.team5.auction.trade.domain.TradeStatus.PAID;
 
 /** TODO(거래): 구현 */
 @Service
@@ -91,33 +87,6 @@ public class TradeServiceImpl implements TradeService {
 
 	@Override
 	@Transactional
-	public void cancelTradeById(Long userId, Long tradeId) {
-		throw new UnsupportedOperationException("미구현");
-	}
-
-	@Override
-	@Transactional(readOnly = true)
-	public Page<TradeResponse> getTrades(Long userId, TradeRole role, TradeStatus status, Pageable pageable) {
-		throw new UnsupportedOperationException("미구현");
-	}
-
-	@Override
-	@Transactional(readOnly = true)
-	public TradeDetailResponse getTrade(Long userId, Long tradeId) {
-		throw new UnsupportedOperationException("미구현");
-	}
-
-	@Override
-	public TradeDetailResponse registerTracking(Long userId, Long tradeId, String trackingNumber) {
-		throw new UnsupportedOperationException("미구현");
-	}
-
-	@Override
-	public TradeDetailResponse confirmPurchase(Long userId, Long tradeId) {
-		throw new UnsupportedOperationException("미구현");
-	}
-
-	@Override
 	public void cancelTradeById(Long userId, Long tradeId) {
 		throw new UnsupportedOperationException("미구현");
 	}
