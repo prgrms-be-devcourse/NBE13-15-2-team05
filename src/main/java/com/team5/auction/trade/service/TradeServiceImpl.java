@@ -94,4 +94,32 @@ public class TradeServiceImpl implements TradeService {
 	public void cancelTradeById(Long userId, Long tradeId) {
 		throw new UnsupportedOperationException("미구현");
 	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Page<TradeResponse> getTrades(Long userId, TradeRole role, TradeStatus status, Pageable pageable) {
+		throw new UnsupportedOperationException("미구현");
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public TradeDetailResponse getTrade(Long userId, Long tradeId) {
+		throw new UnsupportedOperationException("미구현");
+	}
+
+	@Override
+	public TradeDetailResponse registerTracking(Long userId, Long tradeId, String trackingNumber) {
+		throw new UnsupportedOperationException("미구현");
+	}
+
+	@Override
+	public TradeDetailResponse confirmPurchase(Long userId, Long tradeId) {
+		throw new UnsupportedOperationException("미구현");
+	}
+
+	@Override
+	public void cancelTradeById(Long userId, Long tradeId) {
+		throw new UnsupportedOperationException("미구현");
+	}
+
 }

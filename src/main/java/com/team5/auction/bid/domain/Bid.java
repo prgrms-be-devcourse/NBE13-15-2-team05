@@ -2,6 +2,8 @@ package com.team5.auction.bid.domain;
 
 import java.time.LocalDateTime;
 
+import org.jspecify.annotations.Nullable;
+
 import com.team5.auction.auction.domain.Auction;
 import com.team5.auction.common.entity.BaseEntity;
 import com.team5.auction.user.domain.User;
@@ -47,4 +49,9 @@ public class Bid extends BaseEntity {
 
 	@Column(nullable = false)
 	private LocalDateTime bidAt;
+
+	/** 비로그인(null)이면 false. 지연 로딩이어도 getId()는 추가 조회가 없다 */
+	public boolean isBidBy(@Nullable Long userId) {
+		return userId != null && userId.equals(bidder.getId());
+	}
 }
