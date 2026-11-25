@@ -9,23 +9,32 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.team5.auction.auction.domain.Auction;
 import com.team5.auction.auction.domain.AuctionImage;
 import com.team5.auction.auction.dto.AuctionCreateRequest;
+import com.team5.auction.auction.exception.AuctionErrorCode;
 import com.team5.auction.auction.repository.AuctionRepository;
 import com.team5.auction.category.domain.Category;
+import com.team5.auction.category.exception.CategoryErrorCode;
 import com.team5.auction.category.repository.CategoryRepository;
 import com.team5.auction.common.config.AuctionPolicyProperties;
+import com.team5.auction.common.exception.BusinessException;
+import com.team5.auction.common.exception.ErrorCode;
 import com.team5.auction.user.domain.User;
+import com.team5.auction.user.exception.UserErrorCode;
 import com.team5.auction.user.repository.UserRepository;
 
 /** 경매 등록 서비스. 저장소는 Mockito로 대신하고, 시간은 Clock.fixed로 고정합니다. DB 없이 돕니다. */
@@ -34,6 +43,7 @@ class AuctionServiceTest {
 
 	private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
 	private static final LocalDateTime NOW = LocalDateTime.of(2026, 11, 25, 10, 0);
+	private static final List<String> ONE_IMAGE = List.of("https://example.com/a.jpg");
 
 	@Mock
 	private AuctionRepository auctionRepository;
@@ -119,8 +129,8 @@ class AuctionServiceTest {
 	void 회원이_없으면_예외가_나고_저장하지_않는다() {
 		given(userRepository.findById(1L)).willReturn(Optional.empty());
 
-		assertThatThrownBy(() -> auctionService.create(1L, request(7, List.of("https://example.com/a.jpg"))))
-			.hasMessageContaining("USER_NOT_FOUND");
+		assertErrorCode(() -> auctionService.create(1L, request(7, List.of("https://example.com/a.jpg"))),
+			UserErrorCode.USER_NOT_FOUND);
 		then(auctionRepository).should(never()).save(any());
 	}
 
@@ -129,9 +139,92 @@ class AuctionServiceTest {
 		given(userRepository.findById(1L)).willReturn(Optional.of(seller));
 		given(categoryRepository.findById(10L)).willReturn(Optional.empty());
 
-		assertThatThrownBy(() -> auctionService.create(1L, request(7, List.of("https://example.com/a.jpg"))))
-			.hasMessageContaining("CATEGORY_NOT_FOUND");
+		assertErrorCode(() -> auctionService.create(1L, request(7, List.of("https://example.com/a.jpg"))),
+			CategoryErrorCode.CATEGORY_NOT_FOUND);
 		then(auctionRepository).should(never()).save(any());
+	}
+
+	// ---- 등록 검증 (R-02, R-03, R-08, R-09) ----
+
+	@ParameterizedTest
+	@ValueSource(ints = {0, 15})
+	void 기간이_1일_미만이거나_14일을_넘으면_AUCTION_PERIOD_INVALID(int durationDays) {
+		assertErrorCode(() -> auctionService.create(1L, request(durationDays, ONE_IMAGE)),
+			AuctionErrorCode.AUCTION_PERIOD_INVALID);
+		then(userRepository).shouldHaveNoInteractions();
+	}
+
+	@ParameterizedTest
+	@ValueSource(ints = {1, 14})
+	void 기간이_1일이나_14일이면_등록된다(int durationDays) {
+		givenSellerAndCategoryExist();
+
+		Auction saved = auctionService.create(1L, request(durationDays, ONE_IMAGE));
+
+		assertThat(saved.getEndAt()).isEqualTo(NOW.plusDays(durationDays));
+	}
+
+	@ParameterizedTest
+	@ValueSource(longs = {900L, 1_050L})
+	void 시작가가_1000원_미만이거나_100원_단위가_아니면_PRICE_UNIT_INVALID(long startPrice) {
+		assertErrorCode(() -> auctionService.create(1L, priceRequest(startPrice, null)),
+			AuctionErrorCode.PRICE_UNIT_INVALID);
+	}
+
+	@ParameterizedTest
+	@ValueSource(longs = {0L, 900L, 20_050L})
+	void 즉시구매가가_1000원_미만이거나_100원_단위가_아니면_PRICE_UNIT_INVALID(long buyNowPrice) {
+		assertErrorCode(() -> auctionService.create(1L, priceRequest(10_000L, buyNowPrice)),
+			AuctionErrorCode.PRICE_UNIT_INVALID);
+	}
+
+	@ParameterizedTest
+	@ValueSource(longs = {5_000L, 10_000L})
+	void 즉시구매가가_시작가보다_작거나_같으면_BUY_NOW_PRICE_INVALID(long buyNowPrice) {
+		assertErrorCode(() -> auctionService.create(1L, priceRequest(10_000L, buyNowPrice)),
+			AuctionErrorCode.BUY_NOW_PRICE_INVALID);
+	}
+
+	@Test
+	void 즉시구매가가_없으면_가격_비교없이_등록된다() {
+		givenSellerAndCategoryExist();
+
+		Auction saved = auctionService.create(1L, priceRequest(1_000L, null));
+
+		assertThat(saved.getStartPrice()).isEqualTo(1_000L);
+		assertThat(saved.getBuyNowPrice()).isNull();
+	}
+
+	@Test
+	void 이미지가_없으면_IMAGE_COUNT_INVALID() {
+		assertErrorCode(() -> auctionService.create(1L, request(7, null)),
+			AuctionErrorCode.IMAGE_COUNT_INVALID);
+		assertErrorCode(() -> auctionService.create(1L, request(7, List.of())),
+			AuctionErrorCode.IMAGE_COUNT_INVALID);
+	}
+
+	@Test
+	void 이미지가_10장을_넘으면_IMAGE_COUNT_INVALID() {
+		List<String> elevenImages = Collections.nCopies(11, "https://example.com/a.jpg");
+
+		assertErrorCode(() -> auctionService.create(1L, request(7, elevenImages)),
+			AuctionErrorCode.IMAGE_COUNT_INVALID);
+	}
+
+	@Test
+	void 이미지가_10장이면_등록된다() {
+		givenSellerAndCategoryExist();
+
+		Auction saved = auctionService.create(1L, request(7, Collections.nCopies(10, "https://example.com/a.jpg")));
+
+		assertThat(saved.getImages()).hasSize(10);
+	}
+
+	private void assertErrorCode(ThrowingCallable call, ErrorCode expected) {
+		assertThatThrownBy(call)
+			.isInstanceOf(BusinessException.class)
+			.extracting(e -> ((BusinessException) e).getErrorCode())
+			.isEqualTo(expected);
 	}
 
 	private void givenSellerAndCategoryExist() {
@@ -142,6 +235,10 @@ class AuctionServiceTest {
 
 	private AuctionCreateRequest request(int durationDays, List<String> imageUrls) {
 		return new AuctionCreateRequest(10L, "맥북 프로", "거의 새것", 10_000L, 50_000L, durationDays, imageUrls);
+	}
+
+	private AuctionCreateRequest priceRequest(long startPrice, Long buyNowPrice) {
+		return new AuctionCreateRequest(10L, "맥북 프로", "거의 새것", startPrice, buyNowPrice, 7, ONE_IMAGE);
 	}
 
 	private AuctionPolicyProperties policy(boolean enabled, int triggerMinutes, int extendMinutes) {
