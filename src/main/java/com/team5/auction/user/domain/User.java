@@ -59,4 +59,19 @@ public class User extends BaseEntity {
 	public boolean hasAddress() {
 		return address != null;
 	}
+
+	private User(String email, String password, String nickname, String phone, Role role){
+		this.email = email;
+		this.password = password;
+		this.nickname = nickname;
+		this.phone = phone;
+		this.role = role;
+		this.availableBalance = 0;
+		this.lockedBalance = 0;
+		this.address = null;
+	}
+
+	public static User createUser(String email, String password, String nickname, String phone){
+		return new User(email, password, nickname, phone, Role.USER);
+	}
 }
