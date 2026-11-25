@@ -11,7 +11,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 카테고리 (단일 계층). 담당: 경매 */
+/** 카테고리 (단일 계층). 담당: 포인트 **/
 @Getter
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -23,4 +23,10 @@ public class Category extends BaseEntity {
 
 	@Column(nullable = false, unique = true, length = 50)
 	private String name;
+
+	public static Category create(String name) {
+		Category category = new Category();
+		category.name = name;
+		return category;
+	}
 }
