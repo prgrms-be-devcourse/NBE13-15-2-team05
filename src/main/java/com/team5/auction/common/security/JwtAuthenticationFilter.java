@@ -1,15 +1,21 @@
 package com.team5.auction.common.security;
 
-import java.io.IOException;
-
-import org.springframework.stereotype.Component;
-import org.springframework.web.filter.OncePerRequestFilter;
-
+import com.team5.auction.common.exception.BusinessException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.List;
 
 /**
  * TODO(회원·공통): Authorization: Bearer {token} 헤더를 읽어
@@ -26,6 +32,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
 		throws ServletException, IOException {
+
+		String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+
+		if (header != null && header.startsWith("Bearer ")){
+			try{
+				String token = header.substring("Bearer ".length()).trim();
+				LoginUser loginUser = this.jwtTokenProvider.parse(token);
+
+				UsernamePasswordAuthenticationToken authentication =
+						UsernamePasswordAuthenticationToken.authenticated(
+								loginUser,
+								null,
+								List.of(new SimpleGrantedAuthority("ROLE_" + loginUser.role().name()))
+						);
+				SecurityContext context = SecurityContextHolder.createEmptyContext();
+
+				context.setAuthentication(authentication);
+
+				SecurityContextHolder.setContext(context);
+
+			} catch (BusinessException ex){
+				SecurityContextHolder.clearContext();
+			}
+		}
 		chain.doFilter(request, response);
 	}
 }

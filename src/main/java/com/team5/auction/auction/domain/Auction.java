@@ -112,27 +112,46 @@ public class Auction extends BaseEntity {
 
 	/** status == ACTIVE && now < endAt (R-17) */
 	public boolean isOpenAt(LocalDateTime now) {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		return status == AuctionStatus.ACTIVE && now.isBefore(endAt);
 	}
 
 	/** 입찰 0건이면 startPrice, 아니면 currentPrice + bidUnit (R-12) */
 	public long minimumBid(long bidUnit) {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		return bidCount == 0 ? startPrice : currentPrice + bidUnit;
 	}
 
 	/** buyNowPrice != null && currentPrice < buyNowPrice (R-03, R-45) */
 	public boolean canBuyNow() {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		return buyNowPrice != null && currentPrice < buyNowPrice;
 	}
 
 	/** 현재가·최고 입찰자 갱신, 입찰 수 +1, 마감 연장 판단 (R-30, 계약서 4장 계산식) */
 	public void applyBid(User bidder, long amount, LocalDateTime now) {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		currentPrice = amount;
+		highestBidder = bidder;
+		bidCount++;
+
+		// 마감 extendTriggerMinutes 전부터(경계 포함) 입찰이 들어오면 now + extendMinutes로 연장.
+		// 연장 결과가 기존 마감보다 늦을 때만 반영해 마감이 앞당겨지지 않게 한다. originalEndAt은 유지, 횟수 상한 없음 (R-31)
+		if (extendEnabled && !now.isBefore(endAt.minusMinutes(extendTriggerMinutes))) {
+			LocalDateTime extended = now.plusMinutes(extendMinutes);
+			if (extended.isAfter(endAt)) {
+				endAt = extended;
+				extendCount++;
+			}
+		}
 	}
 
 	/** ACTIVE → BOUGHT_NOW */
 	public void markBoughtNow() {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		if (status != AuctionStatus.ACTIVE)
+			throw new IllegalStateException("ACTIVE 경매만 즉시구매 가능");
+		status = AuctionStatus.BOUGHT_NOW;
+	}
+
+	/** 비로그인(null)이면 false */
+	public boolean isHighestBidder(Long userId) {
+		return highestBidder != null && userId != null && userId.equals(highestBidder.getId());
 	}
 
 	// ================= 경매 담당 구현 =================
