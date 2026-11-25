@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.team5.auction.auction.domain.Auction;
@@ -24,8 +29,10 @@ import com.team5.auction.common.entity.Address;
 import com.team5.auction.point.service.Fee;
 import com.team5.auction.point.service.FeeCalculator;
 import com.team5.auction.trade.domain.Trade;
+import com.team5.auction.trade.domain.TradeRole;
 import com.team5.auction.trade.domain.TradeStatus;
 import com.team5.auction.trade.domain.TradeType;
+import com.team5.auction.trade.dto.TradeResponse;
 import com.team5.auction.trade.event.TradeCreatedEvent;
 import com.team5.auction.trade.repository.TradeRepository;
 import com.team5.auction.user.domain.User;
@@ -119,5 +126,75 @@ class TradeServiceTest {
 
 		then(tradeRepository).should(never()).save(any());
 		then(eventPublisher).shouldHaveNoInteractions();
+	}
+
+	// ---- getTrades: 역할·상태 조합에 맞는 조회 메서드를 부르는지 ----
+
+	private final Pageable pageable = PageRequest.of(0, 20);
+
+	@Test
+	void getTrades_구매자_상태없음이면_findByBuyerId() {
+		given(tradeRepository.findByBuyerId(1L, pageable)).willReturn(Page.empty());
+
+		tradeService.getTrades(1L, TradeRole.BUYER, null, pageable);
+
+		then(tradeRepository).should().findByBuyerId(1L, pageable);
+		then(tradeRepository).shouldHaveNoMoreInteractions();
+	}
+
+	@Test
+	void getTrades_구매자_상태있음이면_findByBuyerIdAndStatus() {
+		given(tradeRepository.findByBuyerIdAndStatus(1L, TradeStatus.PAID, pageable)).willReturn(Page.empty());
+
+		tradeService.getTrades(1L, TradeRole.BUYER, TradeStatus.PAID, pageable);
+
+		then(tradeRepository).should().findByBuyerIdAndStatus(1L, TradeStatus.PAID, pageable);
+		then(tradeRepository).shouldHaveNoMoreInteractions();
+	}
+
+	@Test
+	void getTrades_판매자_상태없음이면_findBySellerId() {
+		given(tradeRepository.findBySellerId(2L, pageable)).willReturn(Page.empty());
+
+		tradeService.getTrades(2L, TradeRole.SELLER, null, pageable);
+
+		then(tradeRepository).should().findBySellerId(2L, pageable);
+		then(tradeRepository).shouldHaveNoMoreInteractions();
+	}
+
+	@Test
+	void getTrades_판매자_상태있음이면_findBySellerIdAndStatus() {
+		given(tradeRepository.findBySellerIdAndStatus(2L, TradeStatus.SHIPPED, pageable)).willReturn(Page.empty());
+
+		tradeService.getTrades(2L, TradeRole.SELLER, TradeStatus.SHIPPED, pageable);
+
+		then(tradeRepository).should().findBySellerIdAndStatus(2L, TradeStatus.SHIPPED, pageable);
+		then(tradeRepository).shouldHaveNoMoreInteractions();
+	}
+
+	@Test
+	void getTrades_조회한_거래를_TradeResponse로_변환한다() {
+		// given
+		Trade trade = mock(Trade.class);
+		given(auction.getId()).willReturn(10L);
+		given(auction.getTitle()).willReturn("테스트 경매");
+		given(trade.getId()).willReturn(100L);
+		given(trade.getAuction()).willReturn(auction);
+		given(trade.getType()).willReturn(TradeType.BUY_NOW);
+		given(trade.getPrice()).willReturn(50_000L);
+		given(trade.getStatus()).willReturn(TradeStatus.PAID);
+		given(trade.getTradedAt()).willReturn(NOW);
+		given(trade.getShipDeadlineAt()).willReturn(NOW.plusDays(SHIP_DEADLINE_DAYS));
+		given(tradeRepository.findByBuyerId(1L, pageable))
+			.willReturn(new PageImpl<>(List.of(trade), pageable, 1));
+
+		// when
+		Page<TradeResponse> result = tradeService.getTrades(1L, TradeRole.BUYER, null, pageable);
+
+		// then
+		assertThat(result.getTotalElements()).isEqualTo(1);
+		assertThat(result.getContent().get(0)).isEqualTo(new TradeResponse(
+			100L, 10L, "테스트 경매", TradeType.BUY_NOW, 50_000L, TradeStatus.PAID,
+			NOW, NOW.plusDays(SHIP_DEADLINE_DAYS), null));
 	}
 }

@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ import com.team5.auction.bid.dto.BidHistoryResponse;
 import com.team5.auction.bid.dto.BidResultResponse;
 import com.team5.auction.bid.dto.MyBidResponse;
 import com.team5.auction.bid.domain.Bid;
+import com.team5.auction.bid.event.OutbidEvent;
 import com.team5.auction.bid.exception.BidErrorCode;
 import com.team5.auction.bid.repository.BidRepository;
 import com.team5.auction.common.exception.BusinessException;
@@ -44,6 +46,7 @@ public class BidService {
 	private final PointService pointService;
 	private final TradeService tradeService;
 	private final Clock clock;
+	private final ApplicationEventPublisher eventPublisher;
 
 	/**
 	 * 입찰 (기술서 9.1). 즉시구매가 이상이면 즉시구매가로 낙찰 처리한다 (R-43, R-40).
@@ -94,14 +97,32 @@ public class BidService {
 		// 7. 커밋은 메서드가 끝날 때 @Transactional이 한다.
 		//    version 충돌은 커밋 시점에 나므로 여기서 잡지 않고 BidExceptionHandler가 409(BID_CONFLICT)로 바꾼다 (R-16)
 
-		// TODO(입찰) 8. 이전 최고 입찰자가 있으면 OutbidEvent 발행
+		// 8. 이전 최고 입찰자에게 OUTBID 알림 (즉시구매 포함).
+		//    트랜잭션 안에서 발행하고, 알림 쪽이 커밋 후(AFTER_COMMIT)에 받으므로 롤백되면 알림도 가지 않는다
+		if (prevBidder != null)
+			eventPublisher.publishEvent(new OutbidEvent(auctionId, auction.getTitle(), prevBidder.getId(), price));
 
 		return BidResultResponse.of(bid, auction, extended, tradeId);
 	}
 
-	/** TODO(입찰): 즉시구매가로 입찰한 것과 똑같이 처리 (R-44). 구현 시 @Transactional 필수 */
+	/**
+	 * 즉시구매. 즉시구매가로 입찰한 것과 똑같이 처리한다 (R-44).
+	 * 마감·자격 검증, 포인트, 거래 생성, OUTBID 알림은 모두 placeBid가 한다.
+	 *
+	 * <p>같은 클래스 안 호출이라 placeBid의 @Transactional이 적용되지 않으므로 여기에 붙인다.
+	 * 경매는 같은 영속성 컨텍스트에서 다시 조회되므로 쿼리가 추가로 나가지 않는다.
+	 */
+	@Transactional
 	public BidResultResponse buyNow(Long auctionId, Long bidderId) {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		Auction auction = auctionRepository.findById(auctionId)
+			.orElseThrow(() -> new BusinessException(AuctionErrorCode.AUCTION_NOT_FOUND));
+
+		// 즉시구매가가 없거나 현재가가 이미 즉시구매가에 도달했으면 불가 (R-03, R-45)
+		if (!auction.canBuyNow()) {
+			throw new BusinessException(BidErrorCode.BUY_NOW_NOT_AVAILABLE);
+		}
+
+		return placeBid(auctionId, bidderId, auction.getBuyNowPrice());
 	}
 
 	/** 경매의 입찰 내역 (R-18) */

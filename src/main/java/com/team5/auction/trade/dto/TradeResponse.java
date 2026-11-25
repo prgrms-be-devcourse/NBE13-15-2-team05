@@ -1,5 +1,6 @@
 package com.team5.auction.trade.dto;
 
+import com.team5.auction.trade.domain.Trade;
 import com.team5.auction.trade.domain.TradeStatus;
 import com.team5.auction.trade.domain.TradeType;
 import lombok.Value;
@@ -26,4 +27,16 @@ public record TradeResponse (
         /** 자동 구매확정 예정 시각. 송장 입력 전에는 null입니다. (R-52) */
         LocalDateTime autoConfirmAt
 ){
+    public static TradeResponse from (Trade trade) {
+        return new TradeResponse(trade.getId(),
+                trade.getAuction().getId(),
+                trade.getAuction().getTitle(),
+                trade.getType(),
+                trade.getPrice(),
+                trade.getStatus(),
+                trade.getTradedAt(),
+                trade.getShipDeadlineAt(),
+                trade.getAutoConfirmAt()
+        );
+    }
 }
