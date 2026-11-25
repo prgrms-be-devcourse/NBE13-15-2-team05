@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import com.team5.auction.auction.domain.Auction;
 import com.team5.auction.common.entity.Address;
 import com.team5.auction.common.entity.BaseEntity;
+import com.team5.auction.point.service.Fee;
 import com.team5.auction.user.domain.User;
 
 import jakarta.persistence.Column;
@@ -103,4 +104,22 @@ public class Trade extends BaseEntity {
 	@Enumerated(EnumType.STRING)
 	@Column(length = 20)
 	private CancelReason cancelReason;
+
+	public static Trade create(Auction auction, User buyer, TradeType type, long price, Fee fee, Address shippingAddress,
+							   LocalDateTime now, int shipDeadlineDays) {
+		Trade trade = new Trade();
+		trade.auction = auction;
+		trade.buyer = buyer;
+		trade.seller = auction.getSeller();
+		trade.type = type;
+		trade.price = price;
+		trade.feeRate = fee.rate();
+		trade.feeAmount = fee.feeAmount();
+		trade.settleAmount = fee.settleAmount();
+		trade.status = TradeStatus.PAID;
+		trade.shippingAddress = shippingAddress;
+		trade.tradedAt = now;
+		trade.shipDeadlineAt = now.plusDays(shipDeadlineDays);
+		return trade;
+	}
 }
