@@ -4,6 +4,10 @@ import java.time.LocalDateTime;
 
 import org.jspecify.annotations.Nullable;
 
+import com.team5.auction.auction.domain.Auction;
+import com.team5.auction.auction.domain.AuctionStatus;
+import com.team5.auction.bid.domain.Bid;
+
 /**
  * 입찰·즉시구매 결과.
  *
@@ -20,4 +24,16 @@ public record BidResultResponse(
 	boolean boughtNow,
 	@Nullable Long tradeId
 ) {
+
+	/** 입찰 반영(applyBid, markBoughtNow)이 끝난 경매로 만든다 */
+	public static BidResultResponse of(Bid bid, Auction auction, boolean extended, @Nullable Long tradeId) {
+		return new BidResultResponse(
+			bid.getId(),
+			bid.getAmount(),
+			auction.getCurrentPrice(),
+			auction.getEndAt(),
+			extended,
+			auction.getStatus() == AuctionStatus.BOUGHT_NOW,
+			tradeId);
+	}
 }

@@ -124,8 +124,17 @@ public class Auction extends BaseEntity {
 		return buyNowPrice != null && currentPrice < buyNowPrice;
 	}
 
-	/** 현재가·최고 입찰자 갱신, 입찰 수 +1, 마감 연장 판단 (R-30, 계약서 4장 계산식) */
-	public void applyBid(User bidder, long amount, LocalDateTime now) {
+	/** 즉시구매가 이상 입찰인지. 맞으면 입찰 서비스가 즉시구매가로 바꿔 처리한다 (R-43) */
+	public boolean reachesBuyNow(long amount) {
+		return canBuyNow() && amount >= buyNowPrice;
+	}
+
+	/**
+	 * 현재가·최고 입찰자 갱신, 입찰 수 +1, 마감 연장 판단 (R-30, 계약서 4장 계산식)
+	 *
+	 * @return 이번 입찰로 마감이 연장됐는지
+	 */
+	public boolean applyBid(User bidder, long amount, LocalDateTime now) {
 		currentPrice = amount;
 		highestBidder = bidder;
 		bidCount++;
@@ -137,8 +146,10 @@ public class Auction extends BaseEntity {
 			if (extended.isAfter(endAt)) {
 				endAt = extended;
 				extendCount++;
+				return true;
 			}
 		}
+		return false;
 	}
 
 	/** ACTIVE → BOUGHT_NOW */
@@ -151,6 +162,11 @@ public class Auction extends BaseEntity {
 	/** 비로그인(null)이면 false */
 	public boolean isHighestBidder(Long userId) {
 		return highestBidder != null && userId != null && userId.equals(highestBidder.getId());
+	}
+
+	/** 판매자 본인인지 (R-10) */
+	public boolean isSeller(Long userId) {
+		return userId != null && userId.equals(seller.getId());
 	}
 
 	// ================= 경매 담당 구현 =================
