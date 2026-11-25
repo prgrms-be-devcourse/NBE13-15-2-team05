@@ -21,23 +21,23 @@ import lombok.RequiredArgsConstructor;
 /** 입찰 서비스. */
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class BidService {
 
 	private final BidRepository bidRepository;
 	private final AuctionRepository auctionRepository;
 
-	/** TODO(입찰): 입찰 트랜잭션 8단계 (기술서 9.1) */
+	/** TODO(입찰): 입찰 트랜잭션 8단계 (기술서 9.1). 구현 시 @Transactional 필수 (클래스 기본이 readOnly) */
 	public BidResultResponse placeBid(Long auctionId, Long bidderId, long amount) {
 		throw new UnsupportedOperationException("TODO(입찰)");
 	}
 
-	/** TODO(입찰): 즉시구매가로 입찰한 것과 똑같이 처리 (R-44) */
+	/** TODO(입찰): 즉시구매가로 입찰한 것과 똑같이 처리 (R-44). 구현 시 @Transactional 필수 */
 	public BidResultResponse buyNow(Long auctionId, Long bidderId) {
 		throw new UnsupportedOperationException("TODO(입찰)");
 	}
 
 	/** 경매의 입찰 내역 (R-18) */
-	@Transactional(readOnly = true)
 	public Page<BidHistoryResponse> getBids(Long auctionId, @Nullable Long viewerId, Pageable pageable) {
 		validateAuctionExists(auctionId);
 		return bidRepository.findByAuctionId(auctionId, pageable)
@@ -45,14 +45,12 @@ public class BidService {
 	}
 
 	/** 내 입찰 목록 */
-	@Transactional(readOnly = true)
 	public Page<MyBidResponse> getMyBids(Long bidderId, Pageable pageable) {
 		return bidRepository.findWithAuctionByBidderId(bidderId, pageable)
 			.map(bid -> MyBidResponse.of(bid, bidderId));
 	}
 
 	/** 운영자용 입찰 내역 (R-18) */
-	@Transactional(readOnly = true)
 	public Page<AdminBidResponse> getBidsForAdmin(Long auctionId, Pageable pageable) {
 		validateAuctionExists(auctionId);
 		return bidRepository.findWithBidderByAuctionId(auctionId, pageable)
