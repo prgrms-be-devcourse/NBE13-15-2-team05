@@ -18,6 +18,10 @@ springdoc:
     path: /swagger-ui.html
 
 # TODO(회원·공통): JWT 설정 키(secret, 만료 시간)는 구현할 때 추가
+jwt:
+  secret: ${JWT_SECRET:local-classroom-only-01234567890123456789012345678901}
+  access-seconds: 900
+#  refresh-seconds: 604800
 
 # ---- 정책 설정값 (docs/프로젝트_기술서.md 5.3) ----
 # 수수료율·입찰 단위는 예시 값입니다. 팀에서 확정 후 수정하세요.
