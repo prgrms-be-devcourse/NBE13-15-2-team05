@@ -148,6 +148,11 @@ public class Auction extends BaseEntity {
 		status = AuctionStatus.BOUGHT_NOW;
 	}
 
+	/** 비로그인(null)이면 false */
+	public boolean isHighestBidder(Long userId) {
+		return highestBidder != null && userId != null && userId.equals(highestBidder.getId());
+	}
+
 	// ================= 경매 담당 구현 =================
 
 	/** 스케줄러에서 호출. 입찰이 있으면 SOLD, 없으면 FAILED (R-41) */
