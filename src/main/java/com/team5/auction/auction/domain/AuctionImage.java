@@ -33,4 +33,13 @@ public class AuctionImage extends BaseEntity {
 
 	@Column(nullable = false)
 	private int sortOrder;
+
+	/** Auction.addImage()에서만 호출합니다. 경매 쪽 images 리스트에 추가하는 일은 addImage가 합니다. */
+	static AuctionImage of(Auction auction, String url, int sortOrder) {
+		AuctionImage image = new AuctionImage();
+		image.auction = auction;
+		image.url = url;
+		image.sortOrder = sortOrder;
+		return image;
+	}
 }

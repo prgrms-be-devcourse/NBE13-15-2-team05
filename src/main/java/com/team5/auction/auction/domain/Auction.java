@@ -26,6 +26,7 @@ import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -149,5 +150,41 @@ public class Auction extends BaseEntity {
 	/** status == ACTIVE && bidCount == 0 (R-06) */
 	public boolean isEditable() {
 		throw new UnsupportedOperationException("TODO(경매)");
+	}
+
+	@Builder
+	private Auction(
+			User seller,
+			Category category,
+			String title,
+			String description,
+			long startPrice,
+			Long buyNowPrice,
+			LocalDateTime startAt,
+			int durationDays,
+			boolean extendEnabled,
+			int extendTriggerMinutes,
+			int extendMinutes) {
+		this.seller = seller;
+		this.category = category;
+		this.title = title;
+		this.description = description;
+		this.startPrice = startPrice;
+		this.buyNowPrice = buyNowPrice;
+		this.currentPrice = startPrice;
+		this.highestBidder = null;
+		this.bidCount = 0;
+		this.status = AuctionStatus.ACTIVE;
+		this.startAt = startAt;
+		this.endAt = startAt.plusDays(durationDays);
+		this.originalEndAt = this.endAt;
+		this.extendEnabled = extendEnabled;
+		this.extendTriggerMinutes = extendTriggerMinutes;
+		this.extendMinutes = extendMinutes;
+		this.extendCount = 0;
+	}
+
+	public void addImage(String url, int sortOrder) {
+		images.add(AuctionImage.of(this, url, sortOrder));
 	}
 }
