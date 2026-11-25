@@ -65,7 +65,17 @@ public class TradeServiceImpl implements TradeService {
 
 	@Override
 	public Page<TradeResponse> getTrades(Long userId, TradeRole role, TradeStatus status, Pageable pageable) {
-		throw new UnsupportedOperationException("미구현");
+		// 역할에 따라 내가 구매자/판매자인 거래만 조회, status가 없으면 전체 상태
+		Page<Trade> trades = switch (role) {
+			case BUYER -> status == null
+					? tradeRepository.findByBuyerId(userId, pageable)
+					: tradeRepository.findByBuyerIdAndStatus(userId, status, pageable);
+			case SELLER -> status == null
+					? tradeRepository.findBySellerId(userId, pageable)
+					: tradeRepository.findBySellerIdAndStatus(userId, status, pageable);
+		};
+
+		return trades.map(TradeResponse::from);
 	}
 
 	@Override
@@ -90,4 +100,5 @@ public class TradeServiceImpl implements TradeService {
 	public void cancelTradeById(Long userId, Long tradeId) {
 		throw new UnsupportedOperationException("미구현");
 	}
+
 }
