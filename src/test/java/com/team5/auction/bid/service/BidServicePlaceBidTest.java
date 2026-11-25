@@ -196,6 +196,60 @@ class BidServicePlaceBidTest {
 		assertError(() -> bidService.placeBid(AUCTION_ID, bidder.getId(), 10_000), AuctionErrorCode.AUCTION_NOT_FOUND);
 	}
 
+	// ---- 즉시구매 (R-44: 즉시구매가로 입찰한 것과 같다) ----
+
+	@Test
+	void 즉시구매는_즉시구매가로_입찰한_것과_같게_낙찰_거래_알림까지_처리한다() {
+		Auction auction = auction(12_000, 1, prevBidder, 50_000L);
+		givenAuctionAndBidder(auction, bidder);
+		givenSaveAssignsId();
+		Trade trade = mock(Trade.class);
+		given(trade.getId()).willReturn(900L);
+		given(tradeService.createTrade(auction, bidder, TradeType.BUY_NOW, 50_000)).willReturn(trade);
+
+		BidResultResponse result = bidService.buyNow(AUCTION_ID, bidder.getId());
+
+		then(pointService).should().lockForBid(AUCTION_ID, bidder.getId(), 50_000, prevBidder.getId(), 12_000);
+		then(eventPublisher).should().publishEvent(new OutbidEvent(AUCTION_ID, "빈티지 카메라", prevBidder.getId(), 50_000));
+		assertThat(auction.getStatus()).isEqualTo(AuctionStatus.BOUGHT_NOW);
+		assertThat(result.amount()).isEqualTo(50_000);
+		assertThat(result.boughtNow()).isTrue();
+		assertThat(result.tradeId()).isEqualTo(900L);
+	}
+
+	@Test
+	void 즉시구매가가_없는_경매는_BUY_NOW_NOT_AVAILABLE() {
+		given(auctionRepository.findById(AUCTION_ID)).willReturn(Optional.of(auction(12_000, 1, prevBidder, null)));
+
+		assertError(() -> bidService.buyNow(AUCTION_ID, bidder.getId()), BidErrorCode.BUY_NOW_NOT_AVAILABLE);
+		then(pointService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void 현재가가_이미_즉시구매가에_도달했으면_BUY_NOW_NOT_AVAILABLE() {
+		given(auctionRepository.findById(AUCTION_ID)).willReturn(Optional.of(auction(50_000, 3, prevBidder, 50_000L)));
+
+		assertError(() -> bidService.buyNow(AUCTION_ID, bidder.getId()), BidErrorCode.BUY_NOW_NOT_AVAILABLE);
+	}
+
+	@Test
+	void 마감된_경매의_즉시구매는_입찰과_같이_AUCTION_CLOSED() {
+		Auction auction = auction(12_000, 1, prevBidder, 50_000L);
+		ReflectionTestUtils.setField(auction, "endAt", NOW);
+		given(auctionRepository.findById(AUCTION_ID)).willReturn(Optional.of(auction));
+
+		assertError(() -> bidService.buyNow(AUCTION_ID, bidder.getId()), BidErrorCode.AUCTION_CLOSED);
+	}
+
+	@Test
+	void 현재_최고_입찰자는_즉시구매도_할_수_없다() {
+		// R-11: 즉시구매도 입찰로 본다
+		givenAuctionAndBidder(auction(12_000, 1, prevBidder, 50_000L), prevBidder);
+
+		assertError(() -> bidService.buyNow(AUCTION_ID, prevBidder.getId()), BidErrorCode.ALREADY_HIGHEST_BIDDER);
+		then(pointService).shouldHaveNoInteractions();
+	}
+
 	// ---- 준비 ----
 
 	private void givenAuctionAndBidder(Auction auction, User user) {
