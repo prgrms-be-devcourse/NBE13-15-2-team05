@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.team5.auction.user.domain.User;
+
 /**
  * 테스트 전용 Auction 생성기.
  * Auction에 아직 생성자·팩토리가 없어(경매 담당 작업) 리플렉션으로 필드를 채운다. 팩토리가 생기면 교체.
@@ -43,6 +45,10 @@ public class AuctionFixture {
 
 	public AuctionFixture bidCount(int bidCount) {
 		return set("bidCount", bidCount);
+	}
+
+	public AuctionFixture seller(User seller) {
+		return set("seller", seller);
 	}
 
 	public AuctionFixture buyNowPrice(Long buyNowPrice) {

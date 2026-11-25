@@ -1,44 +1,144 @@
 package com.team5.auction.bid.service;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
+
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.team5.auction.auction.domain.Auction;
+import com.team5.auction.auction.exception.AuctionErrorCode;
+import com.team5.auction.auction.repository.AuctionRepository;
 
 import com.team5.auction.bid.dto.AdminBidResponse;
 import com.team5.auction.bid.dto.BidHistoryResponse;
 import com.team5.auction.bid.dto.BidResultResponse;
 import com.team5.auction.bid.dto.MyBidResponse;
+import com.team5.auction.bid.domain.Bid;
+import com.team5.auction.bid.exception.BidErrorCode;
+import com.team5.auction.bid.repository.BidRepository;
+import com.team5.auction.common.exception.BusinessException;
+import com.team5.auction.point.service.PointService;
+import com.team5.auction.trade.domain.Trade;
+import com.team5.auction.trade.domain.TradeType;
+import com.team5.auction.trade.service.TradeService;
+import com.team5.auction.user.domain.User;
+import com.team5.auction.user.exception.UserErrorCode;
+import com.team5.auction.user.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
-/** 입찰 서비스. 지금은 컨트롤러 껍데기용 자리만 있습니다. */
+/** 입찰 서비스. */
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class BidService {
 
-	/** TODO(입찰): 입찰 트랜잭션 8단계 (기술서 9.1) */
+	private final BidRepository bidRepository;
+	private final AuctionRepository auctionRepository;
+	private final UserRepository userRepository;
+	private final BidUnitPolicy bidUnitPolicy;
+	private final PointService pointService;
+	private final TradeService tradeService;
+	private final Clock clock;
+
+	/**
+	 * 입찰 (기술서 9.1). 즉시구매가 이상이면 즉시구매가로 낙찰 처리한다 (R-43, R-40).
+	 * version 충돌(R-16)은 커밋 시점에 나므로 여기서 잡지 않는다.
+	 */
+	@Transactional
 	public BidResultResponse placeBid(Long auctionId, Long bidderId, long amount) {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		LocalDateTime now = LocalDateTime.now(clock);
+
+		// 1. 마감 여부 (R-17)
+		Auction auction = auctionRepository.findById(auctionId)
+			.orElseThrow(() -> new BusinessException(AuctionErrorCode.AUCTION_NOT_FOUND));
+		if (!auction.isOpenAt(now)) {
+			throw new BusinessException(BidErrorCode.AUCTION_CLOSED);
+		}
+
+		// 2. 입찰 자격 (R-10, R-11, R-19)
+		User bidder = userRepository.findById(bidderId)
+			.orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
+		validateBidder(auction, bidder);
+
+		// 3. 금액 (R-12, R-13). 즉시구매가 이상이면 즉시구매가로 처리 (R-43)
+		boolean buyNow = auction.reachesBuyNow(amount);
+		long price = buyNow ? auction.getBuyNowPrice() : amount;
+		if (!buyNow && amount < auction.minimumBid(bidUnitPolicy.unitFor(auction.getCurrentPrice()))) {
+			throw new BusinessException(BidErrorCode.BID_TOO_LOW);
+		}
+
+		// 4. 포인트 홀딩 + 이전 최고 입찰자 해제 (R-14, R-20, R-21)
+		User prevBidder = auction.getHighestBidder();
+		long prevAmount = auction.getCurrentPrice();
+		pointService.lockForBid(auctionId, bidderId, price,
+			prevBidder == null ? null : prevBidder.getId(),
+			prevBidder == null ? 0 : prevAmount);
+
+		// 5. 경매 반영 + 마감 연장 (R-30)
+		boolean extended = auction.applyBid(bidder, price, now);
+		Bid bid = bidRepository.save(Bid.create(auction, bidder, price, now));
+
+		// 6. 즉시구매가 도달 시 낙찰·거래 생성 (R-40, R-42)
+		Long tradeId = null;
+		if (buyNow) {
+			auction.markBoughtNow();
+			Trade trade = tradeService.createTrade(auction, bidder, TradeType.BUY_NOW, price);
+			tradeId = trade.getId();
+		}
+
+		// 7. 커밋은 메서드가 끝날 때 @Transactional이 한다.
+		//    version 충돌은 커밋 시점에 나므로 여기서 잡지 않고 BidExceptionHandler가 409(BID_CONFLICT)로 바꾼다 (R-16)
+
+		// TODO(입찰) 8. 이전 최고 입찰자가 있으면 OutbidEvent 발행
+
+		return BidResultResponse.of(bid, auction, extended, tradeId);
 	}
 
-	/** TODO(입찰): 즉시구매가로 입찰한 것과 똑같이 처리 (R-44) */
+	/** TODO(입찰): 즉시구매가로 입찰한 것과 똑같이 처리 (R-44). 구현 시 @Transactional 필수 */
 	public BidResultResponse buyNow(Long auctionId, Long bidderId) {
 		throw new UnsupportedOperationException("TODO(입찰)");
 	}
 
-	/** TODO(입찰): 금액·시각만 공개, 본인 입찰 표시 (R-18) */
+	/** 경매의 입찰 내역 (R-18) */
 	public Page<BidHistoryResponse> getBids(Long auctionId, @Nullable Long viewerId, Pageable pageable) {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		validateAuctionExists(auctionId);
+		return bidRepository.findByAuctionId(auctionId, pageable)
+			.map(bid -> BidHistoryResponse.of(bid, viewerId));
 	}
 
-	/** TODO(입찰): 내 입찰 목록, 최신순 */
+	/** 내 입찰 목록 */
 	public Page<MyBidResponse> getMyBids(Long bidderId, Pageable pageable) {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		return bidRepository.findWithAuctionByBidderId(bidderId, pageable)
+			.map(bid -> MyBidResponse.of(bid, bidderId));
 	}
 
-	/** TODO(입찰): 운영자용, 실제 입찰자 포함 */
+	/** 운영자용 입찰 내역 (R-18) */
 	public Page<AdminBidResponse> getBidsForAdmin(Long auctionId, Pageable pageable) {
-		throw new UnsupportedOperationException("TODO(입찰)");
+		validateAuctionExists(auctionId);
+		return bidRepository.findWithBidderByAuctionId(auctionId, pageable)
+			.map(AdminBidResponse::from);
+	}
+
+	private void validateBidder(Auction auction, User bidder) {
+		if (auction.isSeller(bidder.getId())) {
+			throw new BusinessException(BidErrorCode.SELF_BID_NOT_ALLOWED);
+		}
+		if (auction.isHighestBidder(bidder.getId())) {
+			throw new BusinessException(BidErrorCode.ALREADY_HIGHEST_BIDDER);
+		}
+		if (!bidder.hasAddress()) {
+			throw new BusinessException(BidErrorCode.ADDRESS_REQUIRED);
+		}
+	}
+
+	private void validateAuctionExists(Long auctionId) {
+		if (!auctionRepository.existsById(auctionId)) {
+			throw new BusinessException(AuctionErrorCode.AUCTION_NOT_FOUND);
+		}
 	}
 }

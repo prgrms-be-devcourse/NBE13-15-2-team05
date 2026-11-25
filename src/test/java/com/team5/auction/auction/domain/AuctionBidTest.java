@@ -2,7 +2,7 @@ package com.team5.auction.auction.domain;
 
 import static com.team5.auction.auction.domain.AuctionFixture.*;
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.BDDMockito.*;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -69,6 +69,43 @@ class AuctionBidTest {
 	}
 
 	@Nested
+	class reachesBuyNow {
+
+		@Test
+		void 즉시구매가_이상이면_true() {
+			Auction auction = active().buyNowPrice(50_000L).currentPrice(20_000).build();
+
+			assertThat(auction.reachesBuyNow(50_000)).isTrue();
+			assertThat(auction.reachesBuyNow(70_000)).isTrue();
+		}
+
+		@Test
+		void 즉시구매가_미만이면_false() {
+			assertThat(active().buyNowPrice(50_000L).build().reachesBuyNow(49_999)).isFalse();
+		}
+
+		@Test
+		void 즉시구매가가_없으면_false() {
+			assertThat(active().buyNowPrice(null).build().reachesBuyNow(1_000_000)).isFalse();
+		}
+	}
+
+	@Nested
+	class isSeller {
+
+		@Test
+		void 판매자_id면_true_아니면_false() {
+			User seller = mock(User.class);
+			given(seller.getId()).willReturn(1L);
+			Auction auction = active().seller(seller).build();
+
+			assertThat(auction.isSeller(1L)).isTrue();
+			assertThat(auction.isSeller(2L)).isFalse();
+			assertThat(auction.isSeller(null)).isFalse();
+		}
+	}
+
+	@Nested
 	class applyBid {
 
 		private final User bidder = mock(User.class);
@@ -88,8 +125,9 @@ class AuctionBidTest {
 		void 감지_구간_밖이면_연장하지_않는다() {
 			Auction auction = active().build();
 
-			auction.applyBid(bidder, 12_000, END_AT.minusMinutes(31));
+			boolean extended = auction.applyBid(bidder, 12_000, END_AT.minusMinutes(31));
 
+			assertThat(extended).isFalse();
 			assertThat(auction.getEndAt()).isEqualTo(END_AT);
 			assertThat(auction.getExtendCount()).isZero();
 		}
@@ -99,8 +137,9 @@ class AuctionBidTest {
 			Auction auction = active().build();
 			var now = END_AT.minusMinutes(30);
 
-			auction.applyBid(bidder, 12_000, now);
+			boolean extended = auction.applyBid(bidder, 12_000, now);
 
+			assertThat(extended).isTrue();
 			assertThat(auction.getEndAt()).isEqualTo(now.plusMinutes(60));
 			assertThat(auction.getExtendCount()).isEqualTo(1);
 		}
@@ -130,8 +169,9 @@ class AuctionBidTest {
 		void 연장_시간이_감지_구간보다_짧아도_마감이_앞당겨지지_않는다() {
 			Auction auction = active().extension(true, 30, 10).build();
 
-			auction.applyBid(bidder, 12_000, END_AT.minusMinutes(25));
+			boolean extended = auction.applyBid(bidder, 12_000, END_AT.minusMinutes(25));
 
+			assertThat(extended).isFalse();
 			assertThat(auction.getEndAt()).isEqualTo(END_AT);
 			assertThat(auction.getExtendCount()).isZero();
 		}
