@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.http.MediaType;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -64,6 +65,18 @@ class BidExceptionHandlerTest {
 				.content("{\"amount\": 15000}"))
 			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.success").value(false))
+			.andExpect(jsonPath("$.error.code").value("BID_CONFLICT"));
+	}
+
+	@Test
+	void 포인트_홀딩_중_락_대기_시간이_초과돼도_409_BID_CONFLICT() throws Exception {
+		given(bidService.placeBid(anyLong(), anyLong(), anyLong()))
+			.willThrow(new CannotAcquireLockException("lock wait timeout"));
+
+		mockMvc.perform(post("/api/auctions/10/bids")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"amount\": 15000}"))
+			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.error.code").value("BID_CONFLICT"));
 	}
 

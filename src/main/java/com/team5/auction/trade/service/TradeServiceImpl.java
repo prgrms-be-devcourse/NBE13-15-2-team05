@@ -2,14 +2,19 @@ package com.team5.auction.trade.service;
 
 import com.team5.auction.common.config.AuctionPolicyProperties;
 import com.team5.auction.common.entity.Address;
+import com.team5.auction.common.exception.BusinessException;
 import com.team5.auction.point.service.Fee;
 import com.team5.auction.point.service.FeeCalculator;
-import com.team5.auction.trade.domain.TradeRole;
-import com.team5.auction.trade.domain.TradeStatus;
+import com.team5.auction.point.service.PointService;
+import com.team5.auction.trade.domain.*;
 import com.team5.auction.trade.dto.TradeDetailResponse;
 import com.team5.auction.trade.dto.TradeResponse;
+import com.team5.auction.trade.event.TradeCanceledEvent;
 import com.team5.auction.trade.event.TradeCreatedEvent;
+import com.team5.auction.trade.event.TradeShippedEvent;
+import com.team5.auction.trade.exception.TradeErrorCode;
 import com.team5.auction.trade.repository.TradeRepository;
+import com.team5.auction.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -19,14 +24,14 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.team5.auction.auction.domain.Auction;
-import com.team5.auction.trade.domain.Trade;
-import com.team5.auction.trade.domain.TradeType;
 import com.team5.auction.user.domain.User;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
-/** TODO(거래): 구현 */
+// TODO(거래): 송장 기한(shipDeadlineAt) 초과 시 자동 취소, 환불 스케줄러 구현 (R-56)
+// TODO(거래): autoConfirmAt 경과 시 자동 구매확정 스케줄러 구현 (R-52)
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -37,6 +42,7 @@ public class TradeServiceImpl implements TradeService {
 	private final TradeRepository tradeRepository;
 	private final ApplicationEventPublisher applicationEventPublisher;
 	private final AuctionPolicyProperties policy;
+	private final PointService pointService;
 
 	@Override
 	@Transactional(propagation = Propagation.MANDATORY)
@@ -80,25 +86,95 @@ public class TradeServiceImpl implements TradeService {
 
 	@Override
 	public TradeDetailResponse getTrade(Long userId, Long tradeId) {
-		throw new UnsupportedOperationException("미구현");
+		// 거래 조회
+		Trade trade = findTrade(tradeId);
+
+		// 구매자·판매자만 조회 가능
+		validateParticipant(trade, userId);
+
+		// 상대방 연락처 포함(R-50), 수수료·정산금은 판매자에게만
+		return TradeDetailResponse.of(trade, trade.isSeller(userId));
 	}
 
 	@Override
 	@Transactional
 	public TradeDetailResponse registerTracking(Long userId, Long tradeId, String trackingNumber) {
-		throw new UnsupportedOperationException("미구현");
+		Trade trade = findTrade(tradeId);
+
+		// 판매자만 입력 가능 (R-51)
+		if (!trade.isSeller(userId)) {
+			throw new BusinessException(TradeErrorCode.TRADE_NOT_PARTICIPANT);
+		}
+
+		// PAID → SHIPPED, 자동 구매확정 시각 설정 (R-52)
+		trade.registerTracking(trackingNumber, LocalDateTime.now(clock), policy.trade().autoConfirmDays());
+
+		// 구매자에게 배송 알림
+		applicationEventPublisher.publishEvent(new TradeShippedEvent(tradeId, trade.getAuction().getTitle(),
+				trade.getBuyer().getId(),trackingNumber));
+
+		// 판매자 기준 응답
+		return TradeDetailResponse.of(trade, true);
 	}
 
 	@Override
 	@Transactional
-	public TradeDetailResponse confirmPurchase(Long userId, Long tradeId) {
-		throw new UnsupportedOperationException("미구현");
+	public TradeDetailResponse confirmTrade(Long userId, Long tradeId) {
+		Trade trade = findTrade(tradeId);
+
+		// 구매자만 확정 가능 (R-52)
+		if (!trade.isBuyer(userId)) {
+			throw new BusinessException(TradeErrorCode.TRADE_NOT_PARTICIPANT);
+		}
+
+		confirm(trade);
+
+		// 구매자 기준 응답
+		return TradeDetailResponse.of(trade, false);
+	}
+
+	/** 구매확정 공통 처리. 구매자 확정과 자동 확정 스케줄러가 같이 씁니다. (R-52, R-53) */
+	private void confirm(Trade trade) {
+		// SHIPPED → CONFIRMED
+		trade.confirm(LocalDateTime.now(clock));
+
+		// 구매자 포인트 차감, 판매자 정산 (R-53)
+		pointService.confirmPurchase(trade.getId(), trade.getBuyer().getId(), trade.getPrice(),
+				trade.getSeller().getId(),trade.getSettleAmount());
 	}
 
 	@Override
 	@Transactional
 	public void cancelTradeById(Long userId, Long tradeId) {
-		throw new UnsupportedOperationException("미구현");
+		Trade trade = findTrade(tradeId);
+
+		// 운영자 취소, 확정 전만 가능 (R-55)
+		cancel(trade, CancelReason.ADMIN);
 	}
 
+	/** 거래 취소 공통 처리. 운영자 취소와 송장 기한 스케줄러가 같이 씁니다. (R-55, R-56) */
+	private void cancel(Trade trade, CancelReason reason) {
+		// PAID·SHIPPED → CANCELED
+		trade.cancel(reason, LocalDateTime.now(clock));
+
+		// 구매자에게 거래 금액 전액 환불
+		pointService.refund(trade.getId(), trade.getBuyer().getId(), trade.getPrice());
+
+		// 구매자·판매자에게 취소 알림
+		applicationEventPublisher.publishEvent(new TradeCanceledEvent(trade.getId(), trade.getAuction().getTitle(),
+				trade.getBuyer().getId(), trade.getSeller().getId(), reason));
+	}
+
+	/** 거래 조회. 없으면 TRADE_NOT_FOUND */
+	private Trade findTrade (Long tradeId) {
+		return tradeRepository.findById(tradeId)
+				.orElseThrow(() -> new BusinessException(TradeErrorCode.TRADE_NOT_FOUND));
+	}
+
+	/** 구매자·판매자가 아니면 TRADE_NOT_PARTICIPANT */
+	private void validateParticipant(Trade trade, Long userId) {
+		if (!trade.isParticipant(userId)) {
+			throw new BusinessException(TradeErrorCode.TRADE_NOT_PARTICIPANT);
+		}
+	}
 }

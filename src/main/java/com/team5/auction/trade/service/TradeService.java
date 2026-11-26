@@ -55,7 +55,7 @@ public interface TradeService {
 	 * - 구매자 포인트 차감, 판매자 정산 (R-53)
 	 * 에러: TRADE_NOT_PARTICIPANT, TRADE_INVALID_STATUS(SHIPPED가 아님)
 	 */
-	TradeDetailResponse confirmPurchase(Long userId, Long tradeId);
+	TradeDetailResponse confirmTrade(Long userId, Long tradeId);
 
 	/**
 	 * 운영자가 거래를 취소하고 구매자에게 환불합니다. (R-55)
