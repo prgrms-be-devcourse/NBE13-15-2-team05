@@ -97,6 +97,7 @@ public class Trade extends BaseEntity {
 	@Version
 	private Long version;
 
+	/** 거래 생성. PAID 상태, 수수료·배송지 스냅샷 (R-42, R-54, R-57) */
 	public static Trade create(Auction auction, User buyer, TradeType type, long price, Fee fee, Address shippingAddress,
 							   LocalDateTime now, int shipDeadlineDays) {
 		Trade trade = new Trade();
@@ -115,19 +116,22 @@ public class Trade extends BaseEntity {
 		return trade;
 	}
 
+	/** 구매자 여부 */
 	public boolean isBuyer(Long userId) {
 		return buyer.getId().equals(userId);
 	}
 
+	/** 판매자 여부 */
 	public boolean isSeller(Long userId) {
 		return seller.getId().equals(userId);
 	}
 
+	/** 거래 당사자(구매자·판매자) 여부 */
 	public boolean isParticipant(Long userId) {
 		return isBuyer(userId) || isSeller(userId);
 	}
 
-	/** 송장번호를 등록하고 배송 상태로 바꿉니다. (R-51, R-52) */
+	/** 송장 등록. PAID → SHIPPED (R-51, R-52) */
 	public void registerTracking(String trackingNumber, LocalDateTime now, int autoConfirmDays) {
 		if (this.status != TradeStatus.PAID) {
 			throw new BusinessException(TradeErrorCode.TRADE_INVALID_STATUS);
@@ -138,11 +142,22 @@ public class Trade extends BaseEntity {
 		this.autoConfirmAt = now.plusDays(autoConfirmDays);
 	}
 
+	/** 구매확정. SHIPPED → CONFIRMED (R-52) */
 	public void confirm(LocalDateTime now) {
 		if (this.status != TradeStatus.SHIPPED) {
 			throw new BusinessException(TradeErrorCode.TRADE_INVALID_STATUS);
 		}
 		this.status = TradeStatus.CONFIRMED;
 		this.confirmedAt = now;
+	}
+
+	/** 거래 취소. PAID·SHIPPED → CANCELED (R-55, R-56) */
+	public void cancel(CancelReason reason, LocalDateTime now) {
+		if (this.status != TradeStatus.PAID && this.status != TradeStatus.SHIPPED) {
+			throw new BusinessException(TradeErrorCode.TRADE_INVALID_STATUS);
+		}
+		this.status = TradeStatus.CANCELED;
+		this.cancelReason = reason;
+		this.canceledAt = now;
 	}
 }

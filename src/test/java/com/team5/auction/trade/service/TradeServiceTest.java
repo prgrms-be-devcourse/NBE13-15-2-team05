@@ -31,12 +31,14 @@ import com.team5.auction.common.exception.BusinessException;
 import com.team5.auction.point.service.Fee;
 import com.team5.auction.point.service.FeeCalculator;
 import com.team5.auction.point.service.PointService;
+import com.team5.auction.trade.domain.CancelReason;
 import com.team5.auction.trade.domain.Trade;
 import com.team5.auction.trade.domain.TradeRole;
 import com.team5.auction.trade.domain.TradeStatus;
 import com.team5.auction.trade.domain.TradeType;
 import com.team5.auction.trade.dto.TradeDetailResponse;
 import com.team5.auction.trade.dto.TradeResponse;
+import com.team5.auction.trade.event.TradeCanceledEvent;
 import com.team5.auction.trade.event.TradeCreatedEvent;
 import com.team5.auction.trade.event.TradeShippedEvent;
 import com.team5.auction.trade.exception.TradeErrorCode;
@@ -390,6 +392,76 @@ class TradeServiceTest {
 		given(tradeRepository.findById(999L)).willReturn(Optional.empty());
 
 		assertThatThrownBy(() -> tradeService.confirmTrade(1L, 999L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(TradeErrorCode.TRADE_NOT_FOUND);
+	}
+
+	// ---- cancelTradeById: 운영자 취소, 확정 전만 가능 ----
+
+	@Test
+	void cancelTradeById_PAID면_취소하고_전액_환불하고_이벤트를_발행한다() {
+		// given
+		Trade trade = participantTrade();
+		given(auction.getTitle()).willReturn("테스트 경매");
+
+		// when
+		tradeService.cancelTradeById(99L, 100L);
+
+		// then: 상태·사유·시각
+		assertThat(trade.getStatus()).isEqualTo(TradeStatus.CANCELED);
+		assertThat(trade.getCancelReason()).isEqualTo(CancelReason.ADMIN);
+		assertThat(trade.getCanceledAt()).isEqualTo(NOW);
+		// 구매자에게 거래 금액 전액 환불 (R-55)
+		then(pointService).should().refund(100L, 1L, 50_000L);
+		// 구매자·판매자에게 취소 알림
+		then(eventPublisher).should().publishEvent(
+			new TradeCanceledEvent(100L, "테스트 경매", 1L, 2L, CancelReason.ADMIN));
+	}
+
+	@Test
+	void cancelTradeById_SHIPPED도_취소할_수_있다() {
+		Trade trade = participantTrade();
+		ReflectionTestUtils.setField(trade, "status", TradeStatus.SHIPPED);
+
+		tradeService.cancelTradeById(99L, 100L);
+
+		assertThat(trade.getStatus()).isEqualTo(TradeStatus.CANCELED);
+		then(pointService).should().refund(100L, 1L, 50_000L);
+	}
+
+	@Test
+	void cancelTradeById_CONFIRMED면_TRADE_INVALID_STATUS() {
+		Trade trade = participantTrade();
+		ReflectionTestUtils.setField(trade, "status", TradeStatus.CONFIRMED);
+
+		assertThatThrownBy(() -> tradeService.cancelTradeById(99L, 100L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(TradeErrorCode.TRADE_INVALID_STATUS);
+
+		then(pointService).shouldHaveNoInteractions();
+		then(eventPublisher).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void cancelTradeById_이미_CANCELED면_TRADE_INVALID_STATUS() {
+		Trade trade = participantTrade();
+		ReflectionTestUtils.setField(trade, "status", TradeStatus.CANCELED);
+
+		assertThatThrownBy(() -> tradeService.cancelTradeById(99L, 100L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(TradeErrorCode.TRADE_INVALID_STATUS);
+
+		then(pointService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void cancelTradeById_거래가_없으면_TRADE_NOT_FOUND() {
+		given(tradeRepository.findById(999L)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> tradeService.cancelTradeById(99L, 999L))
 			.isInstanceOf(BusinessException.class)
 			.extracting("errorCode")
 			.isEqualTo(TradeErrorCode.TRADE_NOT_FOUND);

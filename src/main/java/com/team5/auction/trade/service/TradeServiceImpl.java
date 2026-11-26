@@ -6,10 +6,10 @@ import com.team5.auction.common.exception.BusinessException;
 import com.team5.auction.point.service.Fee;
 import com.team5.auction.point.service.FeeCalculator;
 import com.team5.auction.point.service.PointService;
-import com.team5.auction.trade.domain.TradeRole;
-import com.team5.auction.trade.domain.TradeStatus;
+import com.team5.auction.trade.domain.*;
 import com.team5.auction.trade.dto.TradeDetailResponse;
 import com.team5.auction.trade.dto.TradeResponse;
+import com.team5.auction.trade.event.TradeCanceledEvent;
 import com.team5.auction.trade.event.TradeCreatedEvent;
 import com.team5.auction.trade.event.TradeShippedEvent;
 import com.team5.auction.trade.exception.TradeErrorCode;
@@ -24,8 +24,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.team5.auction.auction.domain.Auction;
-import com.team5.auction.trade.domain.Trade;
-import com.team5.auction.trade.domain.TradeType;
 import com.team5.auction.user.domain.User;
 
 import java.time.Clock;
@@ -148,7 +146,23 @@ public class TradeServiceImpl implements TradeService {
 	@Override
 	@Transactional
 	public void cancelTradeById(Long userId, Long tradeId) {
-		throw new UnsupportedOperationException("미구현");
+		Trade trade = findTrade(tradeId);
+
+		// 운영자 취소, 확정 전만 가능 (R-55)
+		cancel(trade, CancelReason.ADMIN);
+	}
+
+	/** 거래 취소 공통 처리. 운영자 취소와 송장 기한 스케줄러가 같이 씁니다. (R-55, R-56) */
+	private void cancel(Trade trade, CancelReason reason) {
+		// PAID·SHIPPED → CANCELED
+		trade.cancel(reason, LocalDateTime.now(clock));
+
+		// 구매자에게 거래 금액 전액 환불
+		pointService.refund(trade.getId(), trade.getBuyer().getId(), trade.getPrice());
+
+		// 구매자·판매자에게 취소 알림
+		applicationEventPublisher.publishEvent(new TradeCanceledEvent(trade.getId(), trade.getAuction().getTitle(),
+				trade.getBuyer().getId(), trade.getSeller().getId(), reason));
 	}
 
 	/** 거래 조회. 없으면 TRADE_NOT_FOUND */
