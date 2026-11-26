@@ -5,6 +5,7 @@ import com.team5.auction.common.security.JwtTokenProvider;
 import com.team5.auction.common.security.SecurityConfig;
 import com.team5.auction.common.security.SecurityErrorHandler;
 import com.team5.auction.user.controller.AuthController;
+import com.team5.auction.user.dto.LoginResponse;
 import com.team5.auction.user.dto.SignupResponse;
 import com.team5.auction.user.exception.UserErrorCode;
 import com.team5.auction.user.service.AuthService;
@@ -87,5 +88,52 @@ class AuthControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("EMAIL_DUPLICATED"));
+    }
+    // ===== 로그인 =====
+
+    private static final String LOGIN_BODY = """
+		{ "email": "user@test.com", "password": "password123" }
+		""";
+
+    @Test
+    void 로그인에_성공하면_200과_accessToken_tokenType_expiresIn을_응답한다() throws Exception {
+        given(authService.login(any())).willReturn(LoginResponse.of("access-token", 3600));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(LOGIN_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.accessToken").value("access-token"))
+                .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.data.expiresIn").value(3600))
+                .andExpect(jsonPath("$.error").doesNotExist());
+    }
+
+    @Test
+    void 이메일이나_비밀번호가_비어_있으면_400_INVALID_INPUT_서비스를_호출하지_않는다() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+					{ "email": "", "password": "" }
+					"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.error.fieldErrors.length()").value(2));
+
+        then(authService).should(never()).login(any());
+    }
+
+    @Test
+    void 서비스가_LOGIN_FAILED를_던지면_401_LOGIN_FAILED() throws Exception {
+        given(authService.login(any())).willThrow(new BusinessException(UserErrorCode.LOGIN_FAILED));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(LOGIN_BODY))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("LOGIN_FAILED"));
     }
 }

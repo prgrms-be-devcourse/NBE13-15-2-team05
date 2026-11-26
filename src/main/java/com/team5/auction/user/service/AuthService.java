@@ -1,7 +1,11 @@
 package com.team5.auction.user.service;
 
 import com.team5.auction.common.exception.BusinessException;
+import com.team5.auction.common.security.JwtTokenProvider;
+import com.team5.auction.common.security.LoginUser;
 import com.team5.auction.user.domain.User;
+import com.team5.auction.user.dto.LoginRequest;
+import com.team5.auction.user.dto.LoginResponse;
 import com.team5.auction.user.dto.SignupRequest;
 import com.team5.auction.user.dto.SignupResponse;
 import com.team5.auction.user.exception.UserErrorCode;
@@ -12,12 +16,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider jwtTokenProvider;
 
     @Transactional
     public SignupResponse signup(SignupRequest request){
@@ -42,5 +49,23 @@ public class AuthService {
             throw new BusinessException(UserErrorCode.EMAIL_DUPLICATED, "이미 사용 중인 이메일 또는 닉네임입니다.");
         }
 
+    }
+
+    @Transactional(readOnly = true)
+    public LoginResponse login(LoginRequest request){
+
+        if (request.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new BusinessException(UserErrorCode.LOGIN_FAILED);
+        }
+
+        User user = userRepository.findByEmail(request.email())
+                .orElseThrow(()-> new BusinessException(UserErrorCode.LOGIN_FAILED));
+
+        if(!passwordEncoder.matches(request.password(), user.getPassword())){
+            throw new BusinessException(UserErrorCode.LOGIN_FAILED);
+        }
+        LoginUser loginUser = new LoginUser(user.getId(), user.getRole());
+
+        return LoginResponse.of(jwtTokenProvider.createAccessToken(loginUser), jwtTokenProvider.getAccessSeconds());
     }
 }

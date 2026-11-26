@@ -1,6 +1,8 @@
 package com.team5.auction.user.controller;
 
 import com.team5.auction.common.response.ApiResponse;
+import com.team5.auction.user.dto.LoginRequest;
+import com.team5.auction.user.dto.LoginResponse;
 import com.team5.auction.user.dto.SignupRequest;
 import com.team5.auction.user.dto.SignupResponse;
 import com.team5.auction.user.service.AuthService;
@@ -26,4 +28,9 @@ public class AuthController {
         return ApiResponse.ok(authService.signup(request));
     }
 
+    @Operation(summary = "로그인")
+    @PostMapping("/login")
+    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request){
+        return ApiResponse.ok(authService.login(request));
+    }
 }

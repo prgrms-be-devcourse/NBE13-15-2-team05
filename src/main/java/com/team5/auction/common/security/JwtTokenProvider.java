@@ -81,4 +81,8 @@ public class JwtTokenProvider {
 				.signWith(this.key, Jwts.SIG.HS256)
 				.compact();
 	}
+
+	public long getAccessSeconds(){
+		return accessSeconds;
+	}
 }

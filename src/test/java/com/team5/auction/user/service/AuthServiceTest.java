@@ -1,8 +1,12 @@
 package com.team5.auction.user.service;
 
 import com.team5.auction.common.exception.BusinessException;
+import com.team5.auction.common.security.JwtTokenProvider;
+import com.team5.auction.common.security.LoginUser;
 import com.team5.auction.user.domain.Role;
 import com.team5.auction.user.domain.User;
+import com.team5.auction.user.dto.LoginRequest;
+import com.team5.auction.user.dto.LoginResponse;
 import com.team5.auction.user.dto.SignupRequest;
 import com.team5.auction.user.dto.SignupResponse;
 import com.team5.auction.user.exception.UserErrorCode;
@@ -32,6 +36,9 @@ class AuthServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private JwtTokenProvider jwtTokenProvider;
 
     @InjectMocks
     private AuthService authService;
@@ -97,6 +104,66 @@ class AuthServiceTest {
         given(userRepository.save(any(User.class))).willThrow(new DataIntegrityViolationException("duplicate"));
 
         assertErrorCode(UserErrorCode.EMAIL_DUPLICATED);
+    }
+
+    // ===== 로그인 =====
+
+    private final LoginRequest loginRequest = new LoginRequest("user@test.com", "password123");
+
+    /** DB에 저장된 회원을 흉내. id와 role은 DB 값이라고 가정하고 직접 넣습니다. */
+    private User storedUser(Role role) {
+        User user = User.createUser("user@test.com", "{bcrypt}encoded", "경매왕", "010-1234-5678");
+        ReflectionTestUtils.setField(user, "id", 7L);
+        ReflectionTestUtils.setField(user, "role", role);
+        return user;
+    }
+
+    @Test
+    void 로그인에_성공하면_DB의_id와_role로_토큰을_발급하고_Bearer와_만료시간을_응답한다() {
+        given(userRepository.findByEmail("user@test.com")).willReturn(Optional.of(storedUser(Role.ADMIN)));
+        given(passwordEncoder.matches("password123", "{bcrypt}encoded")).willReturn(true);
+        given(jwtTokenProvider.createAccessToken(new LoginUser(7L, Role.ADMIN))).willReturn("access-token");
+        given(jwtTokenProvider.getAccessSeconds()).willReturn(3600L);
+
+        LoginResponse response = authService.login(loginRequest);
+
+        assertThat(response.accessToken()).isEqualTo("access-token");
+        assertThat(response.tokenType()).isEqualTo("Bearer");
+        assertThat(response.expiresIn()).isEqualTo(3600L);
+    }
+
+    @Test
+    void 이메일이_없으면_LOGIN_FAILED_토큰을_발급하지_않는다() {
+        given(userRepository.findByEmail("user@test.com")).willReturn(Optional.empty());
+
+        assertLoginFailed(loginRequest);
+        then(passwordEncoder).should(never()).matches(any(), any());
+        then(jwtTokenProvider).should(never()).createAccessToken(any());
+    }
+
+    @Test
+    void 비밀번호가_틀리면_LOGIN_FAILED_토큰을_발급하지_않는다() {
+        given(userRepository.findByEmail("user@test.com")).willReturn(Optional.of(storedUser(Role.USER)));
+        given(passwordEncoder.matches("password123", "{bcrypt}encoded")).willReturn(false);
+
+        assertLoginFailed(loginRequest);
+        then(jwtTokenProvider).should(never()).createAccessToken(any());
+    }
+
+    @Test
+    void 비밀번호가_72바이트를_넘으면_조회하지_않고_LOGIN_FAILED() {
+        String longPassword = "가".repeat(25); // 한글 25자 = UTF-8 75바이트
+
+        assertLoginFailed(new LoginRequest("user@test.com", longPassword));
+        then(userRepository).should(never()).findByEmail(any());
+        then(passwordEncoder).should(never()).matches(any(), any());
+    }
+
+    private void assertLoginFailed(LoginRequest request) {
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException)e).getErrorCode())
+                .isEqualTo(UserErrorCode.LOGIN_FAILED);
     }
 
     private void assertErrorCode(UserErrorCode expected) {
