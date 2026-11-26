@@ -128,4 +128,39 @@ class CategoryServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(CategoryErrorCode.CATEGORY_NOT_FOUND);
     }
+
+    @Test
+    void 경매가_없는_카테고리는_삭제된다() {
+        Category category = category(1L, "전자기기");
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.countAuctionsByCategoryId(1L)).willReturn(0L);
+
+        categoryService.delete(1L);
+
+        then(categoryRepository).should().delete(category);
+    }
+
+    @Test
+    void 없는_카테고리를_삭제하면_CATEGORY_NOT_FOUND를_던진다() {
+        given(categoryRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> categoryService.delete(99L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CategoryErrorCode.CATEGORY_NOT_FOUND);
+        then(categoryRepository).should(never()).delete(any());
+    }
+
+    @Test
+    void 경매가_달린_카테고리를_삭제하면_CATEGORY_IN_USE를_던지고_지우지_않는다() {
+        Category category = category(1L, "전자기기");
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.countAuctionsByCategoryId(1L)).willReturn(1L);
+
+        assertThatThrownBy(() -> categoryService.delete(1L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(CategoryErrorCode.CATEGORY_IN_USE);
+        then(categoryRepository).should(never()).delete(any());
+    }
 }
