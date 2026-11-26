@@ -41,8 +41,42 @@ public record TradeDetailResponse(
         LocalDateTime canceledAt,
         CancelReason cancelReason
 ) {
+    /**
+     * Trade 엔티티를 상세 응답으로 변환합니다.
+     *
+     * @param trade       조회한 거래
+     * @param isSeller    요청자가 판매자인지 여부. false면 수수료와 정산금을 숨깁니다.
+     */
+    public static TradeDetailResponse of(Trade trade, boolean isSeller) {
+        User counterpart = isSeller ? trade.getBuyer() : trade.getSeller();
+
+        return new TradeDetailResponse(
+                trade.getId(),
+                trade.getAuction().getId(),
+                trade.getAuction().getTitle(),
+                trade.getType(),
+                trade.getPrice(),
+                trade.getStatus(),
+                trade.getTradedAt(),
+                trade.getShipDeadlineAt(),
+                trade.getAutoConfirmAt(),
+                Counterpart.from(counterpart),
+                ShippingAddress.from(trade.getShippingAddress()),
+                trade.getTrackingNumber(),
+                isSeller ? trade.getFeeAmount() : null ,
+                isSeller ? trade.getSettleAmount() : null,
+                trade.getShippedAt(),
+                trade.getConfirmedAt(),
+                trade.getCanceledAt(),
+                trade.getCancelReason()
+        );
+    }
+
     /** 거래 상대방의 연락처 정보. (R-50) */
     public record Counterpart(String nickname, String phone) {
+        public static Counterpart from (User user) {
+            return new Counterpart(user.getNickname(), user.getPhone());
+        }
     }
 
     /** 거래에 스냅샷된 배송지의 응답용 DTO. (R-57) */
@@ -64,36 +98,6 @@ public record TradeDetailResponse(
                     address.getZipCode(),
                     address.getAddress1(),
                     address.getAddress2()
-            );
-        }
-
-        /**
-         * Trade 엔티티를 상세 응답으로 변환합니다.
-         *
-         * @param trade       조회한 거래
-         * @param counterpart 요청자 기준의 거래 상대방 (서비스에서 판단해서 넘깁니다)
-         * @param isSeller    요청자가 판매자인지 여부. false면 수수료와 정산금을 숨깁니다.
-         */
-        public static TradeDetailResponse of(Trade trade, Counterpart counterpart, boolean isSeller) {
-            return new TradeDetailResponse(
-                    trade.getId(),
-                    trade.getAuction().getId(),
-                    trade.getAuction().getTitle(),
-                    trade.getType(),
-                    trade.getPrice(),
-                    trade.getStatus(),
-                    trade.getTradedAt(),
-                    trade.getShipDeadlineAt(),
-                    trade.getAutoConfirmAt(),
-                    counterpart,
-                    ShippingAddress.from(trade.getShippingAddress()),
-                    trade.getTrackingNumber(),
-                    isSeller ? trade.getFeeAmount() : null ,
-                    isSeller ? trade.getSettleAmount() : null,
-                    trade.getShippedAt(),
-                    trade.getConfirmedAt(),
-                    trade.getCanceledAt(),
-                    trade.getCancelReason()
             );
         }
     }

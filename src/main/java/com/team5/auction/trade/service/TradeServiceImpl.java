@@ -2,6 +2,7 @@ package com.team5.auction.trade.service;
 
 import com.team5.auction.common.config.AuctionPolicyProperties;
 import com.team5.auction.common.entity.Address;
+import com.team5.auction.common.exception.BusinessException;
 import com.team5.auction.point.service.Fee;
 import com.team5.auction.point.service.FeeCalculator;
 import com.team5.auction.trade.domain.TradeRole;
@@ -9,7 +10,9 @@ import com.team5.auction.trade.domain.TradeStatus;
 import com.team5.auction.trade.dto.TradeDetailResponse;
 import com.team5.auction.trade.dto.TradeResponse;
 import com.team5.auction.trade.event.TradeCreatedEvent;
+import com.team5.auction.trade.exception.TradeErrorCode;
 import com.team5.auction.trade.repository.TradeRepository;
+import com.team5.auction.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -25,6 +28,7 @@ import com.team5.auction.user.domain.User;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 /** TODO(거래): 구현 */
 @Service
@@ -80,7 +84,20 @@ public class TradeServiceImpl implements TradeService {
 
 	@Override
 	public TradeDetailResponse getTrade(Long userId, Long tradeId) {
-		throw new UnsupportedOperationException("미구현");
+		// 거래 조회
+		Trade trade = tradeRepository.findById(tradeId)
+				.orElseThrow(() -> new BusinessException(TradeErrorCode.TRADE_NOT_FOUND));
+
+		boolean isBuyer = trade.getBuyer().getId().equals(userId);
+		boolean isSeller = trade.getSeller().getId().equals(userId);
+
+		// 구매자·판매자만 조회 가능
+		if (!isBuyer && !isSeller) {
+			throw new BusinessException(TradeErrorCode.TRADE_NOT_PARTICIPANT);
+		}
+
+		// 상대방 연락처 포함(R-50), 수수료·정산금은 판매자에게만
+		return TradeDetailResponse.of(trade, isSeller);
 	}
 
 	@Override
