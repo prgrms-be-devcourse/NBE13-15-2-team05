@@ -56,4 +56,19 @@ public class BalanceHistory extends BaseEntity {
 	private RefType refType;
 
 	private Long refId;
+
+	private BalanceHistory(User user, BalanceHistoryType type, long amount, RefType refType, Long refId) {
+		this.user = user;
+		this.type = type;
+		this.amount = amount;
+		this.availableAfter = user.getAvailableBalance();
+		this.lockedAfter = user.getLockedBalance();
+		this.refType = refType;
+		this.refId = refId;
+	}
+
+	/** 잔액을 바꾼 직후에 부릅니다. 바뀐 뒤의 잔액을 그대로 기록합니다 (R-22). CHARGE는 refType, refId 모두 null */
+	public static BalanceHistory create(User user, BalanceHistoryType type, long amount, RefType refType, Long refId) {
+		return new BalanceHistory(user, type, amount, refType, refId);
+	}
 }

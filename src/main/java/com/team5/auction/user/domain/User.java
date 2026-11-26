@@ -2,6 +2,8 @@ package com.team5.auction.user.domain;
 
 import com.team5.auction.common.entity.Address;
 import com.team5.auction.common.entity.BaseEntity;
+import com.team5.auction.common.exception.BusinessException;
+import com.team5.auction.point.exception.PointErrorCode;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -73,5 +75,57 @@ public class User extends BaseEntity {
 
 	public static User createUser(String email, String password, String nickname, String phone){
 		return new User(email, password, nickname, phone, Role.USER);
+	}
+
+	/** 충전: available + (R-23) */
+	public void charge(long amount) {
+		requirePositive(amount);
+		this.availableBalance += amount;
+	}
+
+	/** 입찰 홀딩: available → locked. 사용 가능 포인트가 모자라면 BALANCE_INSUFFICIENT (R-14, R-20) */
+	public void lock(long amount) {
+		requirePositive(amount);
+		if (availableBalance < amount) {
+			throw new BusinessException(PointErrorCode.BALANCE_INSUFFICIENT);
+		}
+		this.availableBalance -= amount;
+		this.lockedBalance += amount;
+	}
+
+	/** 홀딩 해제·환불: locked → available (R-21, R-55, R-61) */
+	public void unlock(long amount) {
+		requirePositive(amount);
+		requireLocked(amount);
+		this.lockedBalance -= amount;
+		this.availableBalance += amount;
+	}
+
+	/** 구매확정 차감: locked - (R-53) */
+	public void deductLocked(long amount) {
+		requirePositive(amount);
+		requireLocked(amount);
+		this.lockedBalance -= amount;
+	}
+
+	/** 판매자 정산: available + (R-53) */
+	public void addAvailable(long amount) {
+		requirePositive(amount);
+		this.availableBalance += amount;
+	}
+
+	/** 금액이 0 이하면 호출한 코드의 버그 */
+	private void requirePositive(long amount) {
+		if (amount <= 0) {
+			throw new IllegalArgumentException("금액은 0보다 커야 합니다. amount=" + amount);
+		}
+	}
+
+	/** 묶인 포인트가 모자라면 코드 버그. 500 응답과 롤백으로 처리 (계약서 2.2) */
+	private void requireLocked(long amount) {
+		if (lockedBalance < amount) {
+			throw new IllegalStateException(
+					"묶인 포인트가 부족합니다. userId=" + id + ", locked=" + lockedBalance + ", amount=" + amount);
+		}
 	}
 }
