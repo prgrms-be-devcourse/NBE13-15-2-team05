@@ -3,6 +3,8 @@ package com.team5.auction.user.domain;
 import com.team5.auction.common.entity.Address;
 import com.team5.auction.common.entity.BaseEntity;
 
+import com.team5.auction.common.exception.BusinessException;
+import com.team5.auction.user.exception.UserErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -73,5 +75,24 @@ public class User extends BaseEntity {
 
 	public static User createUser(String email, String password, String nickname, String phone){
 		return new User(email, password, nickname, phone, Role.USER);
+	}
+
+	public void changeNickname(String nickname){
+		this.nickname = nickname;
+	}
+
+	public void changePhone(String phone){
+		this.phone = phone;
+	}
+
+	public void changeAddress(Address address){
+		this.address = address.copy();
+	}
+
+	public void clearAddress(){
+		if(lockedBalance > 0){
+			throw new BusinessException(UserErrorCode.ADDRESS_REQUIRED_WHILE_LOCKED);
+		}
+		this.address = null;
 	}
 }
