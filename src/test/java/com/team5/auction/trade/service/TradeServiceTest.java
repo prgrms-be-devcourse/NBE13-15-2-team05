@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,14 +27,17 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.team5.auction.auction.domain.Auction;
 import com.team5.auction.common.config.AuctionPolicyProperties;
 import com.team5.auction.common.entity.Address;
+import com.team5.auction.common.exception.BusinessException;
 import com.team5.auction.point.service.Fee;
 import com.team5.auction.point.service.FeeCalculator;
 import com.team5.auction.trade.domain.Trade;
 import com.team5.auction.trade.domain.TradeRole;
 import com.team5.auction.trade.domain.TradeStatus;
 import com.team5.auction.trade.domain.TradeType;
+import com.team5.auction.trade.dto.TradeDetailResponse;
 import com.team5.auction.trade.dto.TradeResponse;
 import com.team5.auction.trade.event.TradeCreatedEvent;
+import com.team5.auction.trade.exception.TradeErrorCode;
 import com.team5.auction.trade.repository.TradeRepository;
 import com.team5.auction.user.domain.User;
 
@@ -196,5 +200,82 @@ class TradeServiceTest {
 		assertThat(result.getContent().get(0)).isEqualTo(new TradeResponse(
 			100L, 10L, "테스트 경매", TradeType.BUY_NOW, 50_000L, TradeStatus.PAID,
 			NOW, NOW.plusDays(SHIP_DEADLINE_DAYS), null));
+	}
+
+	// ---- getTrade: 당사자만 조회, 역할에 따라 상대방·금액 노출이 다른지 ----
+
+	/** 구매자(id=1), 판매자(id=2)가 있는 거래 목. */
+	private Trade participantTrade() {
+		Trade trade = mock(Trade.class);
+		given(trade.getBuyer()).willReturn(buyer);
+		given(trade.getSeller()).willReturn(seller);
+		given(buyer.getId()).willReturn(1L);
+		given(seller.getId()).willReturn(2L);
+		given(tradeRepository.findById(100L)).willReturn(Optional.of(trade));
+		return trade;
+	}
+
+	@Test
+	void getTrade_판매자가_조회하면_구매자_연락처와_수수료_정산금을_준다() {
+		// given
+		Trade trade = participantTrade();
+		given(trade.getId()).willReturn(100L);
+		given(trade.getAuction()).willReturn(auction);
+		given(trade.getFeeAmount()).willReturn(2_500L);
+		given(trade.getSettleAmount()).willReturn(47_500L);
+		given(buyer.getNickname()).willReturn("구매자");
+		given(buyer.getPhone()).willReturn("010-1111-1111");
+
+		// when
+		TradeDetailResponse result = tradeService.getTrade(2L, 100L);
+
+		// then: 상대방은 구매자 (R-50)
+		assertThat(result.tradeId()).isEqualTo(100L);
+		assertThat(result.counterpart())
+			.isEqualTo(new TradeDetailResponse.Counterpart("구매자", "010-1111-1111"));
+		// 수수료·정산금은 판매자에게 노출 (R-54)
+		assertThat(result.feeAmount()).isEqualTo(2_500L);
+		assertThat(result.settleAmount()).isEqualTo(47_500L);
+	}
+
+	@Test
+	void getTrade_구매자가_조회하면_판매자_연락처를_주고_수수료_정산금은_숨긴다() {
+		// given
+		Trade trade = participantTrade();
+		given(trade.getAuction()).willReturn(auction);
+		given(seller.getNickname()).willReturn("판매자");
+		given(seller.getPhone()).willReturn("010-2222-2222");
+
+		// when
+		TradeDetailResponse result = tradeService.getTrade(1L, 100L);
+
+		// then: 상대방은 판매자 (R-50)
+		assertThat(result.counterpart())
+			.isEqualTo(new TradeDetailResponse.Counterpart("판매자", "010-2222-2222"));
+		// 구매자에게는 수수료·정산금 숨김 (R-54)
+		assertThat(result.feeAmount()).isNull();
+		assertThat(result.settleAmount()).isNull();
+		then(trade).should(never()).getFeeAmount();
+		then(trade).should(never()).getSettleAmount();
+	}
+
+	@Test
+	void getTrade_당사자가_아니면_TRADE_NOT_PARTICIPANT() {
+		participantTrade();
+
+		assertThatThrownBy(() -> tradeService.getTrade(3L, 100L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(TradeErrorCode.TRADE_NOT_PARTICIPANT);
+	}
+
+	@Test
+	void getTrade_거래가_없으면_TRADE_NOT_FOUND() {
+		given(tradeRepository.findById(999L)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> tradeService.getTrade(1L, 999L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(TradeErrorCode.TRADE_NOT_FOUND);
 	}
 }
