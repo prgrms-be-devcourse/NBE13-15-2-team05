@@ -14,9 +14,7 @@ import java.util.List ;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true) //
-
-
+@Transactional(readOnly = true)
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
@@ -33,26 +31,26 @@ public class CategoryService {
 
     }
 
-    /* 운영자 카테고리 등록  같은 이름 있으면 CATEGORY_NAME_DUPLICAATED */
+    /* 운영자 카테고리 등록같은 이름 있으면 CATEGORY_NAME_DUPLICATED */
     @Transactional
     public CategoryResponse create(String name) {
-        if (categoryRepository.existsByName(name)) {
+        String trimmed = name.strip();
+        if (categoryRepository.existsByName(trimmed)) {
             throw new BusinessException(CategoryErrorCode.CATEGORY_NAME_DUPLICATED);
-
         }
-        Category category = categoryRepository.save(Category.create(name));
+        Category category = categoryRepository.save(Category.create(trimmed));
         return CategoryResponse.from(category);
     }
 
-    /* 운영자 카테고리 이름 수정 다른 카테고리가 쓰는 이름이면 CATEGORY_NAME_DUPLICATED */
-
+    /* 운영자 카테고리 이름 수정. 이름 앞뒤 공백을 지우고 다른 카테고리가 쓰는 이름이면 CATEGORY_NAME_DUPLICATED */
     @Transactional
     public CategoryResponse update(Long id, String name) {
+        String trimmed = name.strip();
         Category category = getById(id);
-        if (categoryRepository.existsByNameAndIdNot(name, id)) {
+        if (categoryRepository.existsByNameAndIdNot(trimmed, id)) {
             throw new BusinessException(CategoryErrorCode.CATEGORY_NAME_DUPLICATED);
         }
-        category.rename(name);
+        category.rename(trimmed);
         return CategoryResponse.from(category);
     }
 }
