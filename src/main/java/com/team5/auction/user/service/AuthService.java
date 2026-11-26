@@ -51,7 +51,7 @@ public class AuthService {
 
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request){
 
         if (request.password().getBytes(StandardCharsets.UTF_8).length > 72) {

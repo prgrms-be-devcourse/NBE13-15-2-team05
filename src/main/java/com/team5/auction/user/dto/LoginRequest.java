@@ -3,7 +3,7 @@ package com.team5.auction.user.dto;
 import jakarta.validation.constraints.NotBlank;
 
 public record LoginRequest(
-        @NotBlank(message = "이메일을 입력해주세요,")
+        @NotBlank(message = "이메일을 입력해주세요.")
         String email,
 
         @NotBlank(message = "비밀번호를 입력해주세요.")
