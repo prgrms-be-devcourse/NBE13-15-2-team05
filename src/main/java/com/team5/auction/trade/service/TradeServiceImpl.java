@@ -5,6 +5,7 @@ import com.team5.auction.common.entity.Address;
 import com.team5.auction.common.exception.BusinessException;
 import com.team5.auction.point.service.Fee;
 import com.team5.auction.point.service.FeeCalculator;
+import com.team5.auction.point.service.PointService;
 import com.team5.auction.trade.domain.TradeRole;
 import com.team5.auction.trade.domain.TradeStatus;
 import com.team5.auction.trade.dto.TradeDetailResponse;
@@ -43,6 +44,7 @@ public class TradeServiceImpl implements TradeService {
 	private final TradeRepository tradeRepository;
 	private final ApplicationEventPublisher applicationEventPublisher;
 	private final AuctionPolicyProperties policy;
+	private final PointService pointService;
 
 	@Override
 	@Transactional(propagation = Propagation.MANDATORY)
@@ -119,8 +121,28 @@ public class TradeServiceImpl implements TradeService {
 
 	@Override
 	@Transactional
-	public TradeDetailResponse confirmPurchase(Long userId, Long tradeId) {
-		throw new UnsupportedOperationException("미구현");
+	public TradeDetailResponse confirmTrade(Long userId, Long tradeId) {
+		Trade trade = findTrade(tradeId);
+
+		// 구매자만 확정 가능 (R-52)
+		if (!trade.isBuyer(userId)) {
+			throw new BusinessException(TradeErrorCode.TRADE_NOT_PARTICIPANT);
+		}
+
+		confirm(trade);
+
+		// 구매자 기준 응답
+		return TradeDetailResponse.of(trade, false);
+	}
+
+	/** 구매확정 공통 처리. 구매자 확정과 자동 확정 스케줄러가 같이 씁니다. (R-52, R-53) */
+	private void confirm(Trade trade) {
+		// SHIPPED → CONFIRMED
+		trade.confirm(LocalDateTime.now(clock));
+
+		// 구매자 포인트 차감, 판매자 정산 (R-53)
+		pointService.confirmPurchase(trade.getId(), trade.getBuyer().getId(), trade.getPrice(),
+				trade.getSeller().getId(),trade.getSettleAmount());
 	}
 
 	@Override

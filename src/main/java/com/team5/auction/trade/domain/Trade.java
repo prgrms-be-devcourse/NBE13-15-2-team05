@@ -11,20 +11,7 @@ import com.team5.auction.point.service.Fee;
 import com.team5.auction.trade.exception.TradeErrorCode;
 import com.team5.auction.user.domain.User;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Embedded;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -107,6 +94,9 @@ public class Trade extends BaseEntity {
 	@Column(length = 20)
 	private CancelReason cancelReason;
 
+	@Version
+	private Long version;
+
 	public static Trade create(Auction auction, User buyer, TradeType type, long price, Fee fee, Address shippingAddress,
 							   LocalDateTime now, int shipDeadlineDays) {
 		Trade trade = new Trade();
@@ -146,5 +136,13 @@ public class Trade extends BaseEntity {
 		this.status = TradeStatus.SHIPPED;
 		this.shippedAt = now;
 		this.autoConfirmAt = now.plusDays(autoConfirmDays);
+	}
+
+	public void confirm(LocalDateTime now) {
+		if (this.status != TradeStatus.SHIPPED) {
+			throw new BusinessException(TradeErrorCode.TRADE_INVALID_STATUS);
+		}
+		this.status = TradeStatus.CONFIRMED;
+		this.confirmedAt = now;
 	}
 }
