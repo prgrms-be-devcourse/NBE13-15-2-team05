@@ -6,7 +6,9 @@ import java.time.LocalDateTime;
 import com.team5.auction.auction.domain.Auction;
 import com.team5.auction.common.entity.Address;
 import com.team5.auction.common.entity.BaseEntity;
+import com.team5.auction.common.exception.BusinessException;
 import com.team5.auction.point.service.Fee;
+import com.team5.auction.trade.exception.TradeErrorCode;
 import com.team5.auction.user.domain.User;
 
 import jakarta.persistence.Column;
@@ -121,5 +123,28 @@ public class Trade extends BaseEntity {
 		trade.tradedAt = now;
 		trade.shipDeadlineAt = now.plusDays(shipDeadlineDays);
 		return trade;
+	}
+
+	public boolean isBuyer(Long userId) {
+		return buyer.getId().equals(userId);
+	}
+
+	public boolean isSeller(Long userId) {
+		return seller.getId().equals(userId);
+	}
+
+	public boolean isParticipant(Long userId) {
+		return isBuyer(userId) || isSeller(userId);
+	}
+
+	/** 송장번호를 등록하고 배송 상태로 바꿉니다. (R-51, R-52) */
+	public void registerTracking(String trackingNumber, LocalDateTime now, int autoConfirmDays) {
+		if (this.status != TradeStatus.PAID) {
+			throw new BusinessException(TradeErrorCode.TRADE_INVALID_STATUS);
+		}
+		this.trackingNumber = trackingNumber;
+		this.status = TradeStatus.SHIPPED;
+		this.shippedAt = now;
+		this.autoConfirmAt = now.plusDays(autoConfirmDays);
 	}
 }

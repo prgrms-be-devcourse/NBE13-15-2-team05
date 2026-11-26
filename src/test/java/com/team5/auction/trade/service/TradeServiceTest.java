@@ -37,6 +37,7 @@ import com.team5.auction.trade.domain.TradeType;
 import com.team5.auction.trade.dto.TradeDetailResponse;
 import com.team5.auction.trade.dto.TradeResponse;
 import com.team5.auction.trade.event.TradeCreatedEvent;
+import com.team5.auction.trade.event.TradeShippedEvent;
 import com.team5.auction.trade.exception.TradeErrorCode;
 import com.team5.auction.trade.repository.TradeRepository;
 import com.team5.auction.user.domain.User;
@@ -48,6 +49,7 @@ class TradeServiceTest {
 	private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
 	private static final LocalDateTime NOW = LocalDateTime.of(2026, 11, 25, 10, 0);
 	private static final int SHIP_DEADLINE_DAYS = 3;
+	private static final int AUTO_CONFIRM_DAYS = 7;
 
 	@Mock FeeCalculator feeCalculator;
 	@Mock TradeRepository tradeRepository;
@@ -63,7 +65,7 @@ class TradeServiceTest {
 		Clock clock = Clock.fixed(NOW.atZone(ZONE).toInstant(), ZONE);
 		AuctionPolicyProperties policy = new AuctionPolicyProperties(
 			null, null, null,
-			new AuctionPolicyProperties.TradePolicy(SHIP_DEADLINE_DAYS, 7),
+			new AuctionPolicyProperties.TradePolicy(SHIP_DEADLINE_DAYS, AUTO_CONFIRM_DAYS),
 			null);
 		tradeService = new TradeServiceImpl(feeCalculator, clock, tradeRepository, eventPublisher, policy);
 	}
@@ -204,13 +206,16 @@ class TradeServiceTest {
 
 	// ---- getTrade: 당사자만 조회, 역할에 따라 상대방·금액 노출이 다른지 ----
 
-	/** 구매자(id=1), 판매자(id=2)가 있는 거래 목. */
+	/** 구매자(id=1), 판매자(id=2)가 있는 PAID 상태 거래. */
 	private Trade participantTrade() {
-		Trade trade = mock(Trade.class);
-		given(trade.getBuyer()).willReturn(buyer);
-		given(trade.getSeller()).willReturn(seller);
-		given(buyer.getId()).willReturn(1L);
+		given(auction.getSeller()).willReturn(seller);
+		// 판매자 확인만 하는 경우 buyer.getId()를 안 쓸 수 있어 lenient
+		lenient().when(buyer.getId()).thenReturn(1L);
 		given(seller.getId()).willReturn(2L);
+		Address address = new Address("홍길동", "010-1234-5678", "12345", "서울시", "101호");
+		Fee fee = new Fee(new BigDecimal("0.05"), 2_500L, 47_500L);
+		Trade trade = Trade.create(auction, buyer, TradeType.BID_WIN, 50_000L, fee, address, NOW, SHIP_DEADLINE_DAYS);
+		ReflectionTestUtils.setField(trade, "id", 100L);
 		given(tradeRepository.findById(100L)).willReturn(Optional.of(trade));
 		return trade;
 	}
@@ -218,11 +223,7 @@ class TradeServiceTest {
 	@Test
 	void getTrade_판매자가_조회하면_구매자_연락처와_수수료_정산금을_준다() {
 		// given
-		Trade trade = participantTrade();
-		given(trade.getId()).willReturn(100L);
-		given(trade.getAuction()).willReturn(auction);
-		given(trade.getFeeAmount()).willReturn(2_500L);
-		given(trade.getSettleAmount()).willReturn(47_500L);
+		participantTrade();
 		given(buyer.getNickname()).willReturn("구매자");
 		given(buyer.getPhone()).willReturn("010-1111-1111");
 
@@ -241,8 +242,7 @@ class TradeServiceTest {
 	@Test
 	void getTrade_구매자가_조회하면_판매자_연락처를_주고_수수료_정산금은_숨긴다() {
 		// given
-		Trade trade = participantTrade();
-		given(trade.getAuction()).willReturn(auction);
+		participantTrade();
 		given(seller.getNickname()).willReturn("판매자");
 		given(seller.getPhone()).willReturn("010-2222-2222");
 
@@ -255,8 +255,6 @@ class TradeServiceTest {
 		// 구매자에게는 수수료·정산금 숨김 (R-54)
 		assertThat(result.feeAmount()).isNull();
 		assertThat(result.settleAmount()).isNull();
-		then(trade).should(never()).getFeeAmount();
-		then(trade).should(never()).getSettleAmount();
 	}
 
 	@Test
@@ -274,6 +272,66 @@ class TradeServiceTest {
 		given(tradeRepository.findById(999L)).willReturn(Optional.empty());
 
 		assertThatThrownBy(() -> tradeService.getTrade(1L, 999L))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(TradeErrorCode.TRADE_NOT_FOUND);
+	}
+
+	// ---- registerTracking: 판매자만, PAID일 때만 송장 입력 ----
+
+	@Test
+	void registerTracking_판매자가_입력하면_SHIPPED로_바뀌고_이벤트를_발행한다() {
+		// given
+		Trade trade = participantTrade();
+		given(auction.getTitle()).willReturn("테스트 경매");
+
+		// when
+		TradeDetailResponse result = tradeService.registerTracking(2L, 100L, "1234567890");
+
+		// then: 상태·시각 (R-51, R-52)
+		assertThat(trade.getStatus()).isEqualTo(TradeStatus.SHIPPED);
+		assertThat(trade.getTrackingNumber()).isEqualTo("1234567890");
+		assertThat(trade.getShippedAt()).isEqualTo(NOW);
+		assertThat(trade.getAutoConfirmAt()).isEqualTo(NOW.plusDays(AUTO_CONFIRM_DAYS));
+		// 판매자 기준 응답
+		assertThat(result.feeAmount()).isEqualTo(2_500L);
+
+		// then: 구매자에게 배송 알림 이벤트
+		then(eventPublisher).should().publishEvent(
+			new TradeShippedEvent(100L, "테스트 경매", 1L, "1234567890"));
+	}
+
+	@Test
+	void registerTracking_구매자가_입력하면_TRADE_NOT_PARTICIPANT() {
+		Trade trade = participantTrade();
+
+		assertThatThrownBy(() -> tradeService.registerTracking(1L, 100L, "1234567890"))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(TradeErrorCode.TRADE_NOT_PARTICIPANT);
+
+		assertThat(trade.getStatus()).isEqualTo(TradeStatus.PAID);
+		then(eventPublisher).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void registerTracking_이미_SHIPPED면_TRADE_INVALID_STATUS() {
+		Trade trade = participantTrade();
+		ReflectionTestUtils.setField(trade, "status", TradeStatus.SHIPPED);
+
+		assertThatThrownBy(() -> tradeService.registerTracking(2L, 100L, "1234567890"))
+			.isInstanceOf(BusinessException.class)
+			.extracting("errorCode")
+			.isEqualTo(TradeErrorCode.TRADE_INVALID_STATUS);
+
+		then(eventPublisher).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void registerTracking_거래가_없으면_TRADE_NOT_FOUND() {
+		given(tradeRepository.findById(999L)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> tradeService.registerTracking(2L, 999L, "1234567890"))
 			.isInstanceOf(BusinessException.class)
 			.extracting("errorCode")
 			.isEqualTo(TradeErrorCode.TRADE_NOT_FOUND);

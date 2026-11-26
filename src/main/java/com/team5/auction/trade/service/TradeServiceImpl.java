@@ -10,6 +10,7 @@ import com.team5.auction.trade.domain.TradeStatus;
 import com.team5.auction.trade.dto.TradeDetailResponse;
 import com.team5.auction.trade.dto.TradeResponse;
 import com.team5.auction.trade.event.TradeCreatedEvent;
+import com.team5.auction.trade.event.TradeShippedEvent;
 import com.team5.auction.trade.exception.TradeErrorCode;
 import com.team5.auction.trade.repository.TradeRepository;
 import com.team5.auction.user.repository.UserRepository;
@@ -30,7 +31,8 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-/** TODO(거래): 구현 */
+// TODO(거래): 송장 기한(shipDeadlineAt) 초과 시 자동 취소, 환불 스케줄러 구현 (R-56)
+// TODO(거래): autoConfirmAt 경과 시 자동 구매확정 스케줄러 구현 (R-52)
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -85,25 +87,34 @@ public class TradeServiceImpl implements TradeService {
 	@Override
 	public TradeDetailResponse getTrade(Long userId, Long tradeId) {
 		// 거래 조회
-		Trade trade = tradeRepository.findById(tradeId)
-				.orElseThrow(() -> new BusinessException(TradeErrorCode.TRADE_NOT_FOUND));
-
-		boolean isBuyer = trade.getBuyer().getId().equals(userId);
-		boolean isSeller = trade.getSeller().getId().equals(userId);
+		Trade trade = findTrade(tradeId);
 
 		// 구매자·판매자만 조회 가능
-		if (!isBuyer && !isSeller) {
-			throw new BusinessException(TradeErrorCode.TRADE_NOT_PARTICIPANT);
-		}
+		validateParticipant(trade, userId);
 
 		// 상대방 연락처 포함(R-50), 수수료·정산금은 판매자에게만
-		return TradeDetailResponse.of(trade, isSeller);
+		return TradeDetailResponse.of(trade, trade.isSeller(userId));
 	}
 
 	@Override
 	@Transactional
 	public TradeDetailResponse registerTracking(Long userId, Long tradeId, String trackingNumber) {
-		throw new UnsupportedOperationException("미구현");
+		Trade trade = findTrade(tradeId);
+
+		// 판매자만 입력 가능 (R-51)
+		if (!trade.isSeller(userId)) {
+			throw new BusinessException(TradeErrorCode.TRADE_NOT_PARTICIPANT);
+		}
+
+		// PAID → SHIPPED, 자동 구매확정 시각 설정 (R-52)
+		trade.registerTracking(trackingNumber, LocalDateTime.now(clock), policy.trade().autoConfirmDays());
+
+		// 구매자에게 배송 알림
+		applicationEventPublisher.publishEvent(new TradeShippedEvent(tradeId, trade.getAuction().getTitle(),
+				trade.getBuyer().getId(),trackingNumber));
+
+		// 판매자 기준 응답
+		return TradeDetailResponse.of(trade, true);
 	}
 
 	@Override
@@ -118,4 +129,16 @@ public class TradeServiceImpl implements TradeService {
 		throw new UnsupportedOperationException("미구현");
 	}
 
+	/** 거래 조회. 없으면 TRADE_NOT_FOUND */
+	private Trade findTrade (Long tradeId) {
+		return tradeRepository.findById(tradeId)
+				.orElseThrow(() -> new BusinessException(TradeErrorCode.TRADE_NOT_FOUND));
+	}
+
+	/** 구매자·판매자가 아니면 TRADE_NOT_PARTICIPANT */
+	private void validateParticipant(Trade trade, Long userId) {
+		if (!trade.isParticipant(userId)) {
+			throw new BusinessException(TradeErrorCode.TRADE_NOT_PARTICIPANT);
+		}
+	}
 }
