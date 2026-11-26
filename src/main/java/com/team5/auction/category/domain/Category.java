@@ -29,4 +29,9 @@ public class Category extends BaseEntity {
 		category.name = name;
 		return category;
 	}
+
+	/* 운영자 카테고리 수정  이름 중복검사는 서비스에서  */
+	public void rename(String name){
+		this.name = name ;
+	}
 }
