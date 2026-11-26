@@ -64,6 +64,6 @@ public class TradeController {
             @AuthenticationPrincipal LoginUser user,
             @PathVariable Long id
     ) {
-        return ApiResponse.ok(tradeService.confirmPurchase(user.id(), id));
+        return ApiResponse.ok(tradeService.confirmTrade(user.id(), id));
     }
 }
