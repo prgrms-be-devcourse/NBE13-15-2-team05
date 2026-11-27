@@ -8,6 +8,7 @@ import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -42,7 +43,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	@ExceptionHandler(BusinessException.class)
 	public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e) {
 		ErrorCode code = e.getErrorCode();
-		return ResponseEntity.status(code.status()).body(ApiResponse.fail(code, e.getMessage()));
+		return error(code.status()).body(ApiResponse.fail(code, e.getMessage()));
 	}
 
 	/**
@@ -57,7 +58,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			.map(v -> new ApiResponse.FieldError(lastNodeName(v.getPropertyPath()), v.getMessage()))
 			.toList();
 		ErrorCode code = CommonErrorCode.INVALID_INPUT;
-		return ResponseEntity.status(code.status()).body(ApiResponse.fail(code, code.message(), fieldErrors));
+		return error(code.status()).body(ApiResponse.fail(code, code.message(), fieldErrors));
 	}
 
 	/**
@@ -69,7 +70,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	public ResponseEntity<ApiResponse<Void>> handleConcurrencyFailure(ConcurrencyFailureException e) {
 		log.warn("Concurrency failure: {}", e.getMessage());
 		ErrorCode code = CommonErrorCode.CONCURRENT_UPDATE;
-		return ResponseEntity.status(code.status()).body(ApiResponse.fail(code));
+		return error(code.status()).body(ApiResponse.fail(code));
 	}
 
 	/**
@@ -87,7 +88,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception e) {
 		log.error("Unexpected error", e);
 		ErrorCode code = CommonErrorCode.INTERNAL_ERROR;
-		return ResponseEntity.status(code.status()).body(ApiResponse.fail(code));
+		return error(code.status()).body(ApiResponse.fail(code));
 	}
 
 	/** 스프링 MVC 표준 예외의 응답 본문을 ApiResponse 형식으로 바꾼다. 상태 코드는 스프링이 정한 값을 따른다. */
@@ -100,7 +101,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			log.error("Spring MVC error", ex);
 		}
 		ApiResponse<Void> response = ApiResponse.fail(code, code.message(), fieldErrors(ex));
-		return ResponseEntity.status(statusCode).headers(headers).body(response);
+		return ResponseEntity.status(statusCode).headers(headers).contentType(MediaType.APPLICATION_JSON).body(response);
+	}
+
+	/**
+	 * 에러 응답은 요청의 Accept와 관계없이 항상 JSON으로 보낸다.
+	 * 예를 들어 SSE 구독(Accept: text/event-stream)에서 404가 나면, Content-Type을 정해 두지 않을 경우
+	 * JSON을 Accept에 맞출 수 없어 응답 쓰기에 실패하고 500이 된다.
+	 */
+	private static ResponseEntity.BodyBuilder error(HttpStatusCode status) {
+		return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON);
 	}
 
 	private ErrorCode toErrorCode(HttpStatusCode statusCode) {

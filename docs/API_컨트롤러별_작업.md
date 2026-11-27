@@ -1,6 +1,6 @@
 # API 컨트롤러별 작업 (5팀)
 
-> 기준: [프로젝트_기술서.md](프로젝트_기술서.md) 8장 API 29개, [모듈_계약서.md](모듈_계약서.md)
+> 기준: [프로젝트_기술서.md](프로젝트_기술서.md) 8장 API 30개, [모듈_계약서.md](모듈_계약서.md)
 > 컨트롤러 하나를 작업 하나로 봅니다. 카드 하나만 읽고 바로 시작할 수 있게 정리했습니다.
 > 요청·응답 필드는 **초안**입니다. 담당자가 구현하면서 다듬되, 바꾼 내용은 Swagger에 반영합니다.
 
@@ -10,9 +10,9 @@
 
 | # | 컨트롤러 | API | 담당 | 함께 맡는 서비스·배치 |
 | --- | --- | --- | --- | --- |
-| C1 | `AuthController` | 2 | 회원·공통·알림 | JWT 구현, 테스트 데이터 |
-| C2 | `UserController` | 2 | 회원·공통·알림 | |
-| C3 | `NotificationController` | 2 | 회원·공통·알림 | 알림 이벤트 리스너 |
+| C1 | `AuthController` | 3 | 회원·공통 | JWT 구현, 토큰 재발급, 테스트 데이터 |
+| C2 | `UserController` | 2 | 회원·공통 | |
+| C3 | `NotificationController` | 2 | 팀장(입찰) | 알림 이벤트 리스너 |
 | C4 | `PointController` | 2 | 포인트 | `PointService`, `FeeCalculator` |
 | C5 | `CategoryController` | 1 | 포인트 | |
 | C6 | `AdminCategoryController` | 3 | 포인트 | |
@@ -25,14 +25,16 @@
 
 | 담당 | 컨트롤러 | API 수 |
 | --- | --- | --- |
-| 회원·공통·알림 | C1, C2, C3 | 6 |
+| 회원·공통 | C1, C2 | 5 |
 | 포인트 | C4, C5, C6 | 6 |
 | 경매 | C7, C8 | 7 |
-| 팀장(입찰) | C9, C10 | 5 |
+| 팀장(입찰) | C9, C10, C3 | 7 |
 | 거래 | C11, C12 | 5 |
-| **합계** | **12개** | **29** |
+| **합계** | **12개** | **30** |
 
 > **바뀐 점**: 처음 가이드에서는 카테고리가 경매 담당이었습니다. 경매 담당 API가 11개로 몰려 있어서, 카테고리(C5, C6)를 API가 2개뿐인 포인트 담당에게 옮겼습니다.
+>
+> **바뀐 점 2**: 알림(C3)은 회원·공통 담당에서 팀장(입찰)으로 옮겼습니다. 대신 심화였던 토큰 재발급을 기본 범위로 올려 회원·공통 담당(C1)이 맡습니다.
 
 ### 모든 카드에 공통
 
@@ -46,19 +48,21 @@
 
 ---
 
-## 2. 회원·공통·알림
+## 2. 회원·공통
 
 ### C1. `AuthController` — `user/controller`
 
 | Method | URI | 권한 | 요청 | 응답 | 에러 |
 | --- | --- | --- | --- | --- | --- |
 | POST | `/api/auth/signup` | 전체 | `email`, `password`, `nickname`, `phone` | 201 `{ userId }` | `EMAIL_DUPLICATED`, `NICKNAME_DUPLICATED` |
-| POST | `/api/auth/login` | 전체 | `email`, `password` | `{ accessToken, tokenType: "Bearer", expiresIn }` | `LOGIN_FAILED` |
+| POST | `/api/auth/login` | 전체 | `email`, `password` | `{ accessToken, refreshToken, tokenType: "Bearer", expiresIn }` | `LOGIN_FAILED` |
+| POST | `/api/auth/reissue` | 전체 | `refreshToken` | 로그인과 같음 (리프레시 토큰도 새로 발급) | `REFRESH_TOKEN_INVALID` |
 
 **할 일**
 - JWT 라이브러리 추가(`jjwt` 추천), `JwtTokenProvider`, `JwtAuthenticationFilter` 구현. 시크릿은 환경변수.
 - 비밀번호는 `PasswordEncoder`로 암호화. 가입 시 role = USER, 잔액 0, 배송지 없음.
 - 로그인 실패는 이메일·비밀번호 구분 없이 같은 메시지.
+- **토큰 재발급**: 액세스 토큰은 15분(`jwt.access-seconds`), 리프레시 토큰은 7일(`jwt.refresh-seconds`, 지금 주석 처리됨). 재발급할 때 리프레시 토큰도 새로 주고 이전 것은 더 못 쓰게 합니다. 저장 방식(DB 컬럼 또는 별도 테이블)은 담당자가 정합니다.
 - **테스트 데이터**(local 프로필): 일반 유저 3명(포인트 충전, 배송지 포함), **운영자 1명**, 카테고리 몇 개, 마감 임박 경매 1~2개(시연용).
 
 **먼저**: **3일차까지**. 로그인이 되어야 다른 사람이 Swagger로 테스트할 수 있습니다.
@@ -73,15 +77,6 @@
 - `address`: `{ recipientName, recipientPhone, zipCode, address1, address2 }`. 없으면 `null`.
 - PATCH는 보낸 필드만 바꿉니다. 배송지 삭제는 `clearAddress: true`로 합니다(PATCH의 `null`은 "안 바꿈"과 구분이 안 되기 때문).
 - 묶인 포인트가 있으면 배송지를 지울 수 없습니다(R-66).
-
-### C3. `NotificationController` — `notification/controller`
-
-| Method | URI | 권한 | 요청 | 응답 | 에러 |
-| --- | --- | --- | --- | --- | --- |
-| GET | `/api/notifications` | USER | `page`, `size` | Page `{ id, type, message, refType, refId, read, createdAt }` | |
-| PATCH | `/api/notifications/{id}/read` | USER | | 200 | `NOTIFICATION_NOT_FOUND` (남의 알림도) |
-
-**함께 할 일**: `NotificationEventListener`에서 이벤트 7종을 받아 저장(계약서 6장 표). 문구는 여기서 만듭니다. 6~7일차.
 
 ---
 
@@ -157,7 +152,7 @@
 
 ---
 
-## 5. 팀장 — 입찰
+## 5. 팀장 — 입찰·알림
 
 ### C9. `BidController` — `bid/controller`
 
@@ -166,6 +161,7 @@
 | POST | `/api/auctions/{id}/bids` | USER | `amount` | 입찰 결과 ③ | `SELF_BID_NOT_ALLOWED`, `ALREADY_HIGHEST_BIDDER`, `BID_TOO_LOW`, `AUCTION_CLOSED`, `ADDRESS_REQUIRED`, `BALANCE_INSUFFICIENT`, `BID_CONFLICT` |
 | POST | `/api/auctions/{id}/buy-now` | USER | | 입찰 결과 ③ | 위 + `BUY_NOW_NOT_AVAILABLE` |
 | GET | `/api/auctions/{id}/bids` | 전체 | `page`, `size` | Page `{ amount, bidAt, mine }` | `AUCTION_NOT_FOUND` |
+| GET | `/api/auctions/{id}/stream` | 전체 | | SSE `price` 이벤트 `{ auctionId, currentPrice, minimumNextBid, bidCount, endAt, extended, status }` (심화) | `AUCTION_NOT_FOUND` |
 | GET | `/api/users/me/bids` | USER | `page`, `size` | Page `{ bidId, auctionId, auctionTitle, amount, bidAt, auctionStatus, currentPrice, highest }` | |
 
 - ③ 입찰 결과: `{ bidId, amount, currentPrice, endAt, extended, boughtNow, tradeId? }`
@@ -181,6 +177,15 @@
 | Method | URI | 권한 | 요청 | 응답 | 에러 |
 | --- | --- | --- | --- | --- | --- |
 | GET | `/api/admin/auctions/{id}/bids` | ADMIN | `page`, `size` | Page `{ bidId, amount, bidAt, bidder{ id, nickname, email } }` | `AUCTION_NOT_FOUND` |
+
+### C3. `NotificationController` — `notification/controller`
+
+| Method | URI | 권한 | 요청 | 응답 | 에러 |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/api/notifications` | USER | `page`, `size` | Page `{ id, type, message, refType, refId, read, createdAt }` | |
+| PATCH | `/api/notifications/{id}/read` | USER | | 200 | `NOTIFICATION_NOT_FOUND` (남의 알림도) |
+
+**함께 할 일**: `NotificationEventListener`에서 이벤트 7종을 받아 저장(계약서 6장 표). 문구는 여기서 만듭니다. 6~7일차.
 
 ---
 

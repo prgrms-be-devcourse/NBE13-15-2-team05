@@ -36,7 +36,7 @@ public class SecurityConfig {
 				.requestMatchers("/api/auth/**").permitAll()
 				.requestMatchers("/api/admin/**").hasRole("ADMIN")
 				.requestMatchers(HttpMethod.GET, "/api/categories", "/api/auctions", "/api/auctions/*",
-					"/api/auctions/*/bids").permitAll()
+					"/api/auctions/*/bids", "/api/auctions/*/stream").permitAll()
 				.anyRequest().authenticated())
 			.exceptionHandling(e -> e
 				.authenticationEntryPoint(securityErrorHandler)
