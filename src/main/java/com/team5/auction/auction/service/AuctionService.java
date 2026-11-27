@@ -87,7 +87,6 @@ public class AuctionService {
 
     //경매 목록 조회
     public Page<AuctionListResponse> getAuctions(Long categoryId, AuctionStatus status, Pageable pageable) {
-        // 카테고리 이름·대표 이미지를 한 쿼리로 DTO에 담아 오므로 N+1이 생기지 않는다.
         return auctionRepository.findAuctionList(categoryId, status, pageable);
     }
 
