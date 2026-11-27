@@ -50,13 +50,15 @@ public class AuctionLiveStream {
 	/**
 	 * 입찰 커밋 후 전송. 커밋 후 리스너에서 예외가 나면 이미 성공한 입찰 요청이 실패로 보이므로,
 	 * 전송 실패는 여기서 모두 삼키고 해당 연결만 정리한다.
+	 * 스프링만 부르면 되므로 공개하지 않는다. 바깥에서 직접 부르면 커밋 전 값이 나갈 수 있다
 	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-	public void onBidPlaced(BidPlacedEvent event) {
+	void onBidPlaced(BidPlacedEvent event) {
 		broadcast(event.auctionId(), AuctionLiveResponse.from(event));
 	}
 
-	public void broadcast(Long auctionId, AuctionLiveResponse live) {
+	/** 테스트에서 호출 여부를 확인하려고 onBidPlaced와 분리했다. 바깥에서는 이벤트로만 보낸다 */
+	void broadcast(Long auctionId, AuctionLiveResponse live) {
 		Set<SseEmitter> targets = emitters.get(auctionId);
 		if (targets == null) {
 			return;
@@ -68,7 +70,7 @@ public class AuctionLiveStream {
 
 	/** 조용한 연결을 프록시·브라우저가 끊지 않도록 주기적으로 빈 신호(주석)를 보낸다 */
 	@Scheduled(fixedRate = 30_000)
-	public void heartbeat() {
+	void heartbeat() {
 		emitters.forEach((auctionId, targets) ->
 			targets.forEach(emitter -> send(auctionId, emitter, SseEmitter.event().comment("ping"))));
 	}
