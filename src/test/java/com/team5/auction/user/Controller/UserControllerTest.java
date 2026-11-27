@@ -19,6 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,10 +54,17 @@ class UserControllerTest {
     private UserService userService;
 
     private final MeResponse myInfo =
-            new MeResponse(USER_ID, "user@test.com", "홍길동", "010-1234-5678", Role.USER, 10_000L, 0L, null);
+            new MeResponse(USER_ID, "user@test.com", "경매왕", "010-1234-5678", Role.USER, 10_000L, 0L, null);
 
     private String bearer() {
         return "Bearer " + jwtTokenProvider.createAccessToken(new LoginUser(USER_ID, Role.USER));
+    }
+
+    private ResultActions patchMe(String json) throws Exception {
+        return mockMvc.perform(patch("/api/users/me")
+                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json));
     }
 
     // ===== GET /api/users/me =====
@@ -70,6 +78,7 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.id").value(USER_ID))
+                .andExpect(jsonPath("$.data.nickname").value("경매왕"))
                 .andExpect(jsonPath("$.data.role").value("USER"))
                 .andExpect(jsonPath("$.data.availableBalance").value(10_000))
                 .andExpect(jsonPath("$.data.address").value(nullValue()));
@@ -86,18 +95,15 @@ class UserControllerTest {
         then(userService).should(never()).me(any());
     }
 
-    // ===== PATCH /api/users/me =====
+    // ===== PATCH /api/users/me : 정상 =====
 
     @Test
     void 수정하면_토큰의_userId로_서비스를_호출하고_200() throws Exception {
         given(userService.updateMe(eq(USER_ID), any())).willReturn(myInfo);
 
-        mockMvc.perform(patch("/api/users/me")
-                        .header(HttpHeaders.AUTHORIZATION, bearer())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                { "phone": "010-1234-5678" }
-                                """))
+        patchMe("""
+                { "phone": "010-1234-5678" }
+                """)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.phone").value("010-1234-5678"));
 
@@ -105,13 +111,23 @@ class UserControllerTest {
     }
 
     @Test
+    void clearAddress_없이_일부_필드만_보내도_200() throws Exception {
+        // Jackson 3에서 기본 타입 boolean이면 역직렬화가 실패하던 문제의 회귀 테스트
+        given(userService.updateMe(eq(USER_ID), any())).willReturn(myInfo);
+
+        patchMe("""
+                { "nickname": "경매왕" }
+                """)
+                .andExpect(status().isOk());
+    }
+
+    // ===== PATCH /api/users/me : 검증 실패 =====
+
+    @Test
     void 닉네임이_2자_미만이면_400_INVALID_INPUT_서비스를_호출하지_않는다() throws Exception {
-        mockMvc.perform(patch("/api/users/me")
-                        .header(HttpHeaders.AUTHORIZATION, bearer())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                { "nickname": "a" }
-                                """))
+        patchMe("""
+                { "nickname": "a" }
+                """)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
                 .andExpect(jsonPath("$.error.fieldErrors[0].field").value("nickname"));
@@ -120,29 +136,69 @@ class UserControllerTest {
     }
 
     @Test
-    void 전화번호가_20자를_넘으면_400() throws Exception {
-        mockMvc.perform(patch("/api/users/me")
-                        .header(HttpHeaders.AUTHORIZATION, bearer())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                { "phone": "010-1234-5678-9999-0000" }
-                                """))
+    void 전화번호_형식이_틀리면_400() throws Exception {
+        patchMe("""
+                { "phone": "01012345678" }
+                """)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.fieldErrors[0].field").value("phone"));
     }
+
+    @Test
+    void 배송지의_우편번호가_빠지면_400_중첩_필드_오류() throws Exception {
+        patchMe("""
+                { "address": { "recipientName": "홍길동", "recipientPhone": "010-2222-3333",
+                               "address1": "서울시 강남구 테헤란로 1" } }
+                """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("address.zipCode"));
+
+        then(userService).should(never()).updateMe(any(), any());
+    }
+
+    @Test
+    void 배송지의_우편번호가_5자리_숫자가_아니면_400() throws Exception {
+        patchMe("""
+                { "address": { "recipientName": "홍길동", "recipientPhone": "010-2222-3333",
+                               "zipCode": "1234", "address1": "서울시 강남구 테헤란로 1" } }
+                """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("address.zipCode"));
+    }
+
+    @Test
+    void 받는_사람_전화번호_형식이_틀리면_400() throws Exception {
+        patchMe("""
+                { "address": { "recipientName": "홍길동", "recipientPhone": "01022223333",
+                               "zipCode": "06236", "address1": "서울시 강남구 테헤란로 1" } }
+                """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("address.recipientPhone"));
+    }
+
+    // ===== PATCH /api/users/me : 서비스 예외 =====
 
     @Test
     void 서비스가_NICKNAME_DUPLICATED를_던지면_409() throws Exception {
         given(userService.updateMe(eq(USER_ID), any()))
                 .willThrow(new BusinessException(UserErrorCode.NICKNAME_DUPLICATED));
 
-        mockMvc.perform(patch("/api/users/me")
-                        .header(HttpHeaders.AUTHORIZATION, bearer())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                { "nickname": "새닉네임" }
-                                """))
+        patchMe("""
+                { "nickname": "새닉네임" }
+                """)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("NICKNAME_DUPLICATED"));
+    }
+
+    @Test
+    void 서비스가_ADDRESS_REQUIRED_WHILE_LOCKED를_던지면_409() throws Exception {
+        given(userService.updateMe(eq(USER_ID), any()))
+                .willThrow(new BusinessException(UserErrorCode.ADDRESS_REQUIRED_WHILE_LOCKED));
+
+        patchMe("""
+                { "clearAddress": true }
+                """)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("ADDRESS_REQUIRED_WHILE_LOCKED"));
     }
 }
