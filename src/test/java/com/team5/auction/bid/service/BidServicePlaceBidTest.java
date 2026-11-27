@@ -22,7 +22,9 @@ import com.team5.auction.auction.domain.AuctionStatus;
 import com.team5.auction.auction.exception.AuctionErrorCode;
 import com.team5.auction.auction.repository.AuctionRepository;
 import com.team5.auction.bid.domain.Bid;
+import com.team5.auction.bid.dto.AuctionLiveResponse;
 import com.team5.auction.bid.dto.BidResultResponse;
+import com.team5.auction.bid.event.BidPlacedEvent;
 import com.team5.auction.bid.event.OutbidEvent;
 import com.team5.auction.bid.exception.BidErrorCode;
 import com.team5.auction.bid.repository.BidRepository;
@@ -84,7 +86,10 @@ class BidServicePlaceBidTest {
 		assertThat(auction.getCurrentPrice()).isEqualTo(10_000);
 		assertThat(auction.getHighestBidder()).isSameAs(bidder);
 		assertThat(result).isEqualTo(new BidResultResponse(500L, 10_000, 10_000, END_AT, false, false, null));
-		then(eventPublisher).shouldHaveNoInteractions(); // 밀려난 사람이 없으니 OUTBID 알림도 없다
+		then(eventPublisher).should(never()).publishEvent(any(OutbidEvent.class)); // 밀려난 사람이 없으니 OUTBID 알림은 없다
+		// 경매를 보는 화면에는 실시간 현재가가 나간다. 다음 최소 입찰가 = 10,000 + 단위 1,000
+		then(eventPublisher).should().publishEvent(
+			new BidPlacedEvent(AUCTION_ID, 10_000, 11_000, 1, END_AT, false, AuctionStatus.ACTIVE));
 	}
 
 	@Test
@@ -111,6 +116,9 @@ class BidServicePlaceBidTest {
 
 		assertThat(result.extended()).isTrue();
 		assertThat(result.endAt()).isEqualTo(NOW.plusMinutes(60));
+		// 화면도 연장된 마감 시각과 연장 여부를 받는다
+		then(eventPublisher).should().publishEvent(
+			new BidPlacedEvent(AUCTION_ID, 13_000, 14_000, 2, NOW.plusMinutes(60), true, AuctionStatus.ACTIVE));
 	}
 
 	@Test
@@ -131,6 +139,9 @@ class BidServicePlaceBidTest {
 		assertThat(result.tradeId()).isEqualTo(900L);
 		// 즉시구매로 밀려나도 OUTBID 알림, 금액은 실제 처리된 즉시구매가
 		then(eventPublisher).should().publishEvent(new OutbidEvent(AUCTION_ID, "빈티지 카메라", prevBidder.getId(), 50_000));
+		// 화면은 BOUGHT_NOW를 받아 입찰을 막는다
+		then(eventPublisher).should().publishEvent(
+			new BidPlacedEvent(AUCTION_ID, 50_000, 51_000, 2, END_AT, false, AuctionStatus.BOUGHT_NOW));
 	}
 
 	@Test
@@ -194,6 +205,25 @@ class BidServicePlaceBidTest {
 		given(auctionRepository.findById(AUCTION_ID)).willReturn(Optional.empty());
 
 		assertError(() -> bidService.placeBid(AUCTION_ID, bidder.getId(), 10_000), AuctionErrorCode.AUCTION_NOT_FOUND);
+	}
+
+	// ---- 실시간 현재가 구독 시작 시 현재 상태 ----
+
+	@Test
+	void 구독을_시작하면_현재가와_다음_최소_입찰가를_준다() {
+		given(auctionRepository.findById(AUCTION_ID)).willReturn(Optional.of(auction(12_000, 1, prevBidder, null)));
+
+		AuctionLiveResponse live = bidService.getLiveState(AUCTION_ID);
+
+		assertThat(live).isEqualTo(
+			new AuctionLiveResponse(AUCTION_ID, 12_000, 13_000, 1, END_AT, false, AuctionStatus.ACTIVE));
+	}
+
+	@Test
+	void 없는_경매를_구독하면_AUCTION_NOT_FOUND() {
+		given(auctionRepository.findById(AUCTION_ID)).willReturn(Optional.empty());
+
+		assertError(() -> bidService.getLiveState(AUCTION_ID), AuctionErrorCode.AUCTION_NOT_FOUND);
 	}
 
 	// ---- 즉시구매 (R-44: 즉시구매가로 입찰한 것과 같다) ----
