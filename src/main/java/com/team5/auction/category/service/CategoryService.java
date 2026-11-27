@@ -53,4 +53,14 @@ public class CategoryService {
         category.rename(trimmed);
         return CategoryResponse.from(category);
     }
+
+    /* 운영자 카테고리 삭제. 경매가 하나라도 달려 있으면 CATEGORY_IN_USE (R-64) */
+    @Transactional
+    public void delete(Long id) {
+        Category category = getById(id);
+        if (categoryRepository.countAuctionsByCategoryId(id) > 0) {
+            throw new BusinessException(CategoryErrorCode.CATEGORY_IN_USE);
+        }
+        categoryRepository.delete(category);
+    }
 }
