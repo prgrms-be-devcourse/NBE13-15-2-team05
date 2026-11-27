@@ -1,5 +1,6 @@
 package com.team5.auction.point.service;
 
+import com.team5.auction.TestcontainersConfiguration;
 import com.team5.auction.common.exception.BusinessException;
 import com.team5.auction.point.exception.PointErrorCode;
 import com.team5.auction.user.domain.User;
@@ -8,14 +9,10 @@ import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.mysql.MySQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -25,21 +22,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 목으로는 JPA 1차 캐시와 DB 락이 맞물리는 동작을 볼 수 없다.
  * 테스트에 @Transactional을 붙이지 않는다. 두 트랜잭션이 각자 커밋해야 문제가 생기는 순서를 재현할 수 있다.
  */
+@Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class PointServiceLockForBidIntegrationTest {
-
-    /**
-     * 공용 TestcontainersConfiguration은 package-private이라 다른 패키지에서 쓸 수 없어서 같은 설정을 여기 둔다
-     */
-    @TestConfiguration(proxyBeanMethods = false)
-    static class MySqlContainerConfig {
-
-        @Bean
-        @ServiceConnection
-        MySQLContainer mysqlContainer() {
-            return new MySQLContainer(DockerImageName.parse("mysql:8.4"));
-        }
-    }
 
     @Autowired
     private PointService pointService;
