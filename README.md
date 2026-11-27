@@ -41,7 +41,7 @@ com.team5.auction
 ├── auction       경매, 종료 스케줄러               담당: 경매
 ├── bid           입찰, 즉시구매, 입찰 단위         담당: 입찰
 ├── trade         거래, 송장·자동확정 스케줄러      담당: 거래
-└── notification  알림 (이벤트 수신)                담당: 회원·공통·알림
+└── notification  알림 (이벤트 수신)                담당: 입찰(팀장)
 ```
 
 도메인마다 `controller / service / repository / domain / dto / event / exception` 패키지를 둡니다.
