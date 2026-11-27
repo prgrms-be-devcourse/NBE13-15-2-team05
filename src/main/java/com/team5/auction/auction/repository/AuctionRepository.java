@@ -29,7 +29,7 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
 		from Auction a
 		join a.category c
 		where a.status = :status
-		  and c.id = :categoryId
+		  and (:categoryId is null or c.id = :categoryId)
 		""",
 		countQuery = """
 		select count(a)
