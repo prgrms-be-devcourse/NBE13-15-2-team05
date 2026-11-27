@@ -7,10 +7,12 @@ import com.team5.auction.point.domain.BalanceHistoryType;
 import com.team5.auction.point.exception.PointErrorCode;
 import com.team5.auction.point.repository.BalanceHistoryRepository;
 import com.team5.auction.user.domain.User;
-import com.team5.auction.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -23,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
@@ -33,7 +36,7 @@ class PointServiceLockForBidTest {
     private static final Long AUCTION_ID = 10L;
 
     @Mock
-    private UserRepository userRepository;
+    private EntityManager entityManager;
     @Mock
     private BalanceHistoryRepository balanceHistoryRepository;
 
@@ -43,7 +46,7 @@ class PointServiceLockForBidTest {
     @Test
     void 첫_입찰이면_입찰자만_묶고_BID_LOCK_내역을_남긴다() {
         User bidder = user(3L, 100_000);
-        given(userRepository.findAllByIdInForUpdate(List.of(3L))).willReturn(List.of(bidder));
+        given(entityManager.find(User.class, 3L)).willReturn(bidder);
 
         pointService.lockForBid(AUCTION_ID, 3L, 12_000, null, 0);
 
@@ -58,7 +61,8 @@ class PointServiceLockForBidTest {
         User prevBidder = user(2L, 100_000);
         prevBidder.lock(12_000); // 이전 입찰자가 12,000원에 입찰해 둔 상태
         User bidder = user(3L, 100_000);
-        given(userRepository.findAllByIdInForUpdate(List.of(3L, 2L))).willReturn(List.of(prevBidder, bidder));
+        given(entityManager.find(User.class, 2L)).willReturn(prevBidder);
+        given(entityManager.find(User.class, 3L)).willReturn(bidder);
 
         pointService.lockForBid(AUCTION_ID, 3L, 15_000, 2L, 12_000);
 
@@ -76,7 +80,8 @@ class PointServiceLockForBidTest {
         User prevBidder = user(2L, 100_000);
         prevBidder.lock(12_000);
         User bidder = user(3L, 10_000);
-        given(userRepository.findAllByIdInForUpdate(List.of(3L, 2L))).willReturn(List.of(prevBidder, bidder));
+        given(entityManager.find(User.class, 2L)).willReturn(prevBidder);
+        given(entityManager.find(User.class, 3L)).willReturn(bidder);
 
         assertThatThrownBy(() -> pointService.lockForBid(AUCTION_ID, 3L, 15_000, 2L, 12_000))
                 .isInstanceOf(BusinessException.class)
@@ -89,8 +94,35 @@ class PointServiceLockForBidTest {
     }
 
     @Test
+    void 유저는_id_오름차순으로_잠근다() {
+        User prevBidder = user(2L, 100_000);
+        prevBidder.lock(12_000);
+        User bidder = user(3L, 100_000);
+        given(entityManager.find(User.class, 2L)).willReturn(prevBidder);
+        given(entityManager.find(User.class, 3L)).willReturn(bidder);
+
+        pointService.lockForBid(AUCTION_ID, 3L, 15_000, 2L, 12_000); // 새 입찰자(3)를 먼저 넘겨도
+
+        InOrder inOrder = inOrder(entityManager);
+        then(entityManager).should(inOrder).refresh(prevBidder, LockModeType.PESSIMISTIC_WRITE); // id 2를 먼저 잠근다
+        then(entityManager).should(inOrder).refresh(bidder, LockModeType.PESSIMISTIC_WRITE);
+    }
+
+    @Test
+    void 이_트랜잭션에서_이미_잠근_유저는_다시_읽지_않는다() {
+        User bidder = user(3L, 100_000);
+        given(entityManager.find(User.class, 3L)).willReturn(bidder);
+        given(entityManager.getLockMode(bidder)).willReturn(LockModeType.PESSIMISTIC_WRITE);
+
+        pointService.lockForBid(AUCTION_ID, 3L, 12_000, null, 0);
+
+        then(entityManager).should(never()).refresh(any(), any(LockModeType.class));
+        assertBalance(bidder, 88_000, 12_000);
+    }
+
+    @Test
     void 유저를_찾지_못하면_IllegalStateException() {
-        given(userRepository.findAllByIdInForUpdate(List.of(3L))).willReturn(List.of());
+        given(entityManager.find(User.class, 3L)).willReturn(null);
 
         assertThatThrownBy(() -> pointService.lockForBid(AUCTION_ID, 3L, 12_000, null, 0))
                 .isInstanceOf(IllegalStateException.class);

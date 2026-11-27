@@ -1,9 +1,11 @@
 package com.team5.auction.point.service;
 
 import java.util.Arrays;
-import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.stream.Collectors;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -15,7 +17,6 @@ import com.team5.auction.point.domain.BalanceHistory;
 import com.team5.auction.point.domain.BalanceHistoryType;
 import com.team5.auction.point.repository.BalanceHistoryRepository;
 import com.team5.auction.user.domain.User;
-import com.team5.auction.user.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -24,8 +25,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PointServiceImpl implements PointService {
 
-	private final UserRepository userRepository;
 	private final BalanceHistoryRepository balanceHistoryRepository;
+	private final EntityManager entityManager;
 
 	@Override
 	@Transactional
@@ -69,15 +70,31 @@ public class PointServiceImpl implements PointService {
 		throw new UnsupportedOperationException("TODO(포인트)");
 	}
 
-	/** 유저 행에 쓰기 락을 겁니다. 쿼리가 id 오름차순으로 잠가서 데드락이 생기지 않습니다 (계약서 2.2) */
+	/** 유저들을 id 오름차순으로 하나씩 잠금. 잠그는 순서가 늘 같아서 데드락이 생기지 않도록 */
 	private Map<Long, User> lockUsers(Long... userIds) {
-		List<Long> ids = Arrays.stream(userIds).distinct().toList();
-		Map<Long, User> users = userRepository.findAllByIdInForUpdate(ids).stream()
-				.collect(Collectors.toMap(User::getId, user -> user));
-		if (users.size() != ids.size()) {
-			throw new IllegalStateException("유저를 찾을 수 없습니다. ids=" + ids);
+		Map<Long, User> users = new HashMap<>();
+		for (Long id : Arrays.stream(userIds).distinct().sorted().toList()) {
+			users.put(id, lockUser(id));
 		}
 		return users;
+	}
+
+	/**
+	 * 유저를 FOR UPDATE로 잠그면서 DB의 최신 잔액으로 다시 읽습니다.
+	 * 호출한 쪽이 같은 트랜잭션에서 락 없이 먼저 읽은 유저는 1차 캐시에 옛 잔액이 남아 있기 때문입니다.
+	 * 잠금 쿼리(findAllByIdInForUpdate)로 먼저 잠그면 Hibernate가 refresh를 락 없는 SELECT로 보내서
+	 * MySQL(REPEATABLE READ)에서는 옛 잔액을 다시 읽습니다. 그래서 잠금과 다시 읽기를 refresh 한 번에 합니다.
+	 * 이 트랜잭션에서 이미 잠근 유저는 다시 읽지 않습니다. 아직 DB에 반영하지 않은 변경이 덮어써지기 때문입니다.
+	 */
+	private User lockUser(Long id) {
+		User user = entityManager.find(User.class, id);
+		if (user == null) {
+			throw new IllegalStateException("유저를 찾을 수 없습니다. id=" + id);
+		}
+		if (entityManager.getLockMode(user) != LockModeType.PESSIMISTIC_WRITE) {
+			entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
+		}
+		return user;
 	}
 
 	/** 잔액을 바꾼 직후에 내역을 한 건 남깁니다 (R-22) */
