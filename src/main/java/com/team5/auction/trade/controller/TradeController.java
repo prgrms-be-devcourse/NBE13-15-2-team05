@@ -34,7 +34,7 @@ public class TradeController {
             @AuthenticationPrincipal LoginUser user,
             @RequestParam TradeRole role,
             @RequestParam(required = false) TradeStatus status,
-            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable
+            @PageableDefault(size = 20, sort = "tradedAt", direction = Sort.Direction.DESC) Pageable pageable
             ) {
         return ApiResponse.ok(PageResponse.from(tradeService.getTrades(user.id(), role, status, pageable)));
     }
@@ -64,7 +64,6 @@ public class TradeController {
             @AuthenticationPrincipal LoginUser user,
             @PathVariable Long id
     ) {
-        return ApiResponse.ok(tradeService.confirmPurchase(user.id(), id));
+        return ApiResponse.ok(tradeService.confirmTrade(user.id(), id));
     }
-
 }
