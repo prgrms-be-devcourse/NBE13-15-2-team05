@@ -166,6 +166,7 @@
 | POST | `/api/auctions/{id}/bids` | USER | `amount` | 입찰 결과 ③ | `SELF_BID_NOT_ALLOWED`, `ALREADY_HIGHEST_BIDDER`, `BID_TOO_LOW`, `AUCTION_CLOSED`, `ADDRESS_REQUIRED`, `BALANCE_INSUFFICIENT`, `BID_CONFLICT` |
 | POST | `/api/auctions/{id}/buy-now` | USER | | 입찰 결과 ③ | 위 + `BUY_NOW_NOT_AVAILABLE` |
 | GET | `/api/auctions/{id}/bids` | 전체 | `page`, `size` | Page `{ amount, bidAt, mine }` | `AUCTION_NOT_FOUND` |
+| GET | `/api/auctions/{id}/stream` | 전체 | | SSE `price` 이벤트 `{ auctionId, currentPrice, minimumNextBid, bidCount, endAt, extended, status }` (심화) | `AUCTION_NOT_FOUND` |
 | GET | `/api/users/me/bids` | USER | `page`, `size` | Page `{ bidId, auctionId, auctionTitle, amount, bidAt, auctionStatus, currentPrice, highest }` | |
 
 - ③ 입찰 결과: `{ bidId, amount, currentPrice, endAt, extended, boughtNow, tradeId? }`

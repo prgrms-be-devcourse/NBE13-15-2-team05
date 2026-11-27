@@ -15,10 +15,12 @@ import com.team5.auction.auction.exception.AuctionErrorCode;
 import com.team5.auction.auction.repository.AuctionRepository;
 
 import com.team5.auction.bid.dto.AdminBidResponse;
+import com.team5.auction.bid.dto.AuctionLiveResponse;
 import com.team5.auction.bid.dto.BidHistoryResponse;
 import com.team5.auction.bid.dto.BidResultResponse;
 import com.team5.auction.bid.dto.MyBidResponse;
 import com.team5.auction.bid.domain.Bid;
+import com.team5.auction.bid.event.BidPlacedEvent;
 import com.team5.auction.bid.event.OutbidEvent;
 import com.team5.auction.bid.exception.BidErrorCode;
 import com.team5.auction.bid.repository.BidRepository;
@@ -71,7 +73,7 @@ public class BidService {
 		// 3. 금액 (R-12, R-13). 즉시구매가 이상이면 즉시구매가로 처리 (R-43)
 		boolean buyNow = auction.reachesBuyNow(amount);
 		long price = buyNow ? auction.getBuyNowPrice() : amount;
-		if (!buyNow && amount < auction.minimumBid(bidUnitPolicy.unitFor(auction.getCurrentPrice()))) {
+		if (!buyNow && amount < minimumNextBid(auction)) {
 			throw new BusinessException(BidErrorCode.BID_TOO_LOW);
 		}
 
@@ -102,6 +104,10 @@ public class BidService {
 		if (prevBidder != null)
 			eventPublisher.publishEvent(new OutbidEvent(auctionId, auction.getTitle(), prevBidder.getId(), price));
 
+		// (심화) 경매를 보고 있는 화면에 실시간 현재가 전송. OUTBID와 같이 커밋 후에 보내므로 롤백된 입찰은 나가지 않는다
+		eventPublisher.publishEvent(new BidPlacedEvent(auctionId, auction.getCurrentPrice(), minimumNextBid(auction),
+			auction.getBidCount(), auction.getEndAt(), extended, auction.getStatus()));
+
 		return BidResultResponse.of(bid, auction, extended, tradeId);
 	}
 
@@ -123,6 +129,13 @@ public class BidService {
 		}
 
 		return placeBid(auctionId, bidderId, auction.getBuyNowPrice());
+	}
+
+	/** 실시간 현재가 구독을 시작할 때 보내는 현재 상태 */
+	public AuctionLiveResponse getLiveState(Long auctionId) {
+		Auction auction = auctionRepository.findById(auctionId)
+			.orElseThrow(() -> new BusinessException(AuctionErrorCode.AUCTION_NOT_FOUND));
+		return AuctionLiveResponse.of(auction, minimumNextBid(auction));
 	}
 
 	/** 경매의 입찰 내역 (R-18) */
@@ -155,6 +168,10 @@ public class BidService {
 		if (!bidder.hasAddress()) {
 			throw new BusinessException(BidErrorCode.ADDRESS_REQUIRED);
 		}
+	}
+
+	private long minimumNextBid(Auction auction) {
+		return auction.minimumBid(bidUnitPolicy.unitFor(auction.getCurrentPrice()));
 	}
 
 	private void validateAuctionExists(Long auctionId) {
