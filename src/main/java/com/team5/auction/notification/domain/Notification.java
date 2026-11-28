@@ -22,7 +22,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 서비스 내 알림 (R-63). 담당: 회원·공통·알림 */
+/** 서비스 내 알림 (R-63). 담당: 입찰(팀장) */
 @Getter
 @Entity
 @Table(indexes = @Index(name = "idx_notification_user", columnList = "user_id, id"))
@@ -52,4 +52,16 @@ public class Notification extends BaseEntity {
 
 	/** null이면 안 읽음 */
 	private LocalDateTime readAt;
+
+	private Notification(User user, NotificationType type, String message, RefType refType, Long refId) {
+		this.user = user;
+		this.type = type;
+		this.message = message;
+		this.refType = refType;
+		this.refId = refId;
+	}
+
+	public static Notification create(User user, NotificationType type, String message, RefType refType, Long refId) {
+		return new Notification(user, type, message, refType, refId);
+	}
 }
