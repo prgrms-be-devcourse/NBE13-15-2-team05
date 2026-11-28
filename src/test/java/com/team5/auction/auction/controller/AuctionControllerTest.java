@@ -6,15 +6,24 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import static org.assertj.core.api.Assertions.*;
+
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -23,6 +32,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.team5.auction.auction.domain.Auction;
+import com.team5.auction.auction.domain.AuctionStatus;
+import com.team5.auction.auction.dto.AuctionListResponse;
 import com.team5.auction.auction.exception.AuctionErrorCode;
 import com.team5.auction.auction.service.AuctionService;
 import com.team5.auction.category.exception.CategoryErrorCode;
@@ -172,6 +183,89 @@ class AuctionControllerTest {
 				.content(VALID_BODY))
 			.andExpect(status().isUnauthorized());
 		then(auctionService).should(never()).create(any(), any());
+	}
+
+	// ===== 경매 목록 조회 GET /api/auctions =====
+
+	@Test
+	void 목록을_파라미터_없이_조회하면_기본값으로_조회한다() throws Exception {
+		given(auctionService.getAuctions(any(), any(), any())).willReturn(Page.empty());
+
+		mockMvc.perform(get("/api/auctions"))
+			.andExpect(status().isOk());
+
+		ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+		then(auctionService).should().getAuctions(isNull(), eq(AuctionStatus.ACTIVE), pageable.capture());
+		assertThat(pageable.getValue().getPageNumber()).isZero();
+		assertThat(pageable.getValue().getPageSize()).isEqualTo(20);
+		assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.ASC, "endAt"));
+	}
+
+	@Test
+	void 목록은_로그인하지_않아도_조회할_수_있다() throws Exception {
+		given(auctionService.getAuctions(any(), any(), any())).willReturn(Page.empty());
+
+		mockMvc.perform(get("/api/auctions"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true));
+	}
+
+	@Test
+	void 목록_조회_파라미터를_서비스에_그대로_넘긴다() throws Exception {
+		given(auctionService.getAuctions(any(), any(), any())).willReturn(Page.empty());
+
+		mockMvc.perform(get("/api/auctions")
+				.param("categoryId", "3")
+				.param("status", "FAILED")
+				.param("page", "2")
+				.param("size", "5")
+				.param("sort", "currentPrice,desc"))
+			.andExpect(status().isOk());
+
+		ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+		then(auctionService).should().getAuctions(eq(3L), eq(AuctionStatus.FAILED), pageable.capture());
+		assertThat(pageable.getValue().getPageNumber()).isEqualTo(2);
+		assertThat(pageable.getValue().getPageSize()).isEqualTo(5);
+		assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.DESC, "currentPrice"));
+	}
+
+	@Test
+	void 목록을_PageResponse_형식으로_돌려준다() throws Exception {
+		AuctionListResponse item = new AuctionListResponse(1L, "맥북 프로", "https://img.test/main.jpg", "전자기기",
+			50_000L, null, 0, AuctionStatus.ACTIVE, LocalDateTime.of(2026, 11, 30, 20, 0));
+		given(auctionService.getAuctions(any(), any(), any()))
+			.willReturn(new PageImpl<>(List.of(item), PageRequest.of(0, 1), 3));
+
+		mockMvc.perform(get("/api/auctions").param("size", "1"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.content[0].id").value(1))
+			.andExpect(jsonPath("$.data.content[0].title").value("맥북 프로"))
+			.andExpect(jsonPath("$.data.content[0].thumbnailUrl").value("https://img.test/main.jpg"))
+			.andExpect(jsonPath("$.data.content[0].categoryName").value("전자기기"))
+			.andExpect(jsonPath("$.data.content[0].buyNowPrice").doesNotExist())
+			.andExpect(jsonPath("$.data.page").value(0))
+			.andExpect(jsonPath("$.data.size").value(1))
+			.andExpect(jsonPath("$.data.totalElements").value(3))
+			.andExpect(jsonPath("$.data.totalPages").value(3))
+			.andExpect(jsonPath("$.data.hasNext").value(true));
+	}
+
+	@Test
+	void 목록_조회의_상태값이_잘못되면_400을_돌려준다() throws Exception {
+		mockMvc.perform(get("/api/auctions").param("status", "WRONG"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+			.andExpect(jsonPath("$.error.fieldErrors[?(@.field == 'status')]").exists());
+		then(auctionService).should(never()).getAuctions(any(), any(), any());
+	}
+
+	@Test
+	void 목록_조회의_카테고리ID가_숫자가_아니면_400을_돌려준다() throws Exception {
+		mockMvc.perform(get("/api/auctions").param("categoryId", "abc"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+			.andExpect(jsonPath("$.error.fieldErrors[?(@.field == 'categoryId')]").exists());
+		then(auctionService).should(never()).getAuctions(any(), any(), any());
 	}
 
 	/** 토큰 발급 없이 테스트하려고, JWT 필터가 넣어줄 LoginUser를 직접 SecurityContext에 넣습니다. */

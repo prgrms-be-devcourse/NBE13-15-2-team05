@@ -1,7 +1,9 @@
 package com.team5.auction.auction.service;
 
 import com.team5.auction.auction.domain.Auction;
+import com.team5.auction.auction.domain.AuctionStatus;
 import com.team5.auction.auction.dto.AuctionCreateRequest;
+import com.team5.auction.auction.dto.AuctionListResponse;
 import com.team5.auction.auction.exception.AuctionErrorCode;
 import com.team5.auction.auction.repository.AuctionRepository;
 import com.team5.auction.category.domain.Category;
@@ -13,6 +15,8 @@ import com.team5.auction.user.domain.User;
 import com.team5.auction.user.exception.UserErrorCode;
 import com.team5.auction.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -78,9 +82,14 @@ public class AuctionService {
             auction.addImage(imageUrls.get(i), i);
         }
 
-        // images는 cascade = ALL이라 경매를 저장할 때 함께 저장된다.
         return auctionRepository.save(auction);
     }
+
+    //경매 목록 조회
+    public Page<AuctionListResponse> getAuctions(Long categoryId, AuctionStatus status, Pageable pageable) {
+        return auctionRepository.findAuctionList(categoryId, status, pageable);
+    }
+
 
     // 경매 기간 검증
     private void validatePeriod(int durationDays) {

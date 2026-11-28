@@ -14,7 +14,6 @@ public record AuctionCreateRequest(
         @NotBlank String description,
         @NotNull @Positive Long startPrice,
         @Positive Long buyNowPrice,
-        //끝나는 시간을 작성해야했나?
         @NotNull @Positive int durationDays,
         @Size(max = 10) List<@NotBlank String> imageUrls) {
 }
